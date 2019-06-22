@@ -1,0 +1,117 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\authorship{
+  Portions of this chapter are based on the publication \citetitle{hupel2018compiler}, authored by \citeauthor{hupel2018compiler}~\cite{hupel2018compiler}.
+}
+
+\noindent
+In this section, I will discuss the progression from the de~Bruijn based term language with its small-step semantics given in \cref{code:background:rewriting:term} to the final CakeML semantics.
+The compiler starts out with a term-rewrite system on type \holtype{term} and applies multiple phases to eliminate features that are not present in the CakeML source language.
+The types \holtype{term}, \holtype{nterm} and \holtype{pterm} each have a small-step semantics only.
+The type \holtype{sterm} has a small-step and several intermediate big-step semantics that bridge the gap to CakeML.
+An overview of the intermediate semantics and compiler phases is given in \cref{fig:intermediate}.
+The left-hand column gives an overview of the different phases.
+The right-hand column gives the types of the rule set and the syntax and semantics for each phase.
+
+\begin{figure}[p]
+  \captionsetup{format=simple}
+
+  \tikzstyle{block} = [rectangle, fill=blue!10, text width=5em, text centered, node distance=2cm, minimum height=2em]
+  \tikzstyle{explanation} = [rectangle, node distance=7cm, align=left, fill=green!10, minimum width=9cm, minimum height=3.5em, anchor=west, text width=8.5cm]
+  \tikzstyle{line} = [draw, -latex', thick]
+  \tikzstyle{explline} = [draw, densely dashed, thick, color=black!40]
+  \tikzstyle{relline} = [draw, densely dotted, thick]
+  \centering
+  \begin{tikzpicture}
+    \node [block] (rules) {\holtype{rules}};
+    \node [block, below of=rules] (nrules) {\holtype{nrules}};
+    \node [block, below of=nrules] (crules) {\holtype{crules}};
+    \node [block, below of=crules] (irules) {\holtype{irules}};
+    \node [block, below of=irules, node distance=2.5cm] (prules) {\holtype{prules}};
+    \node [block, below of=prules] (srules) {\holtype{srules}};
+    \node [block, below of=srules, node distance=4.4cm] (vrules) {\holtype{vrules}};
+    \path [line] (rules) -- (nrules) node [midway, left] {§\ref{sec:intermediate:named}};
+    \path [line] (nrules) -- (crules) node [midway, left] {§\ref{sec:intermediate:elim:impl}};
+    \path [line] (crules) -- (irules) node [midway, left] {§\ref{sec:intermediate:elim:impl}};
+    \path [line] (irules.south west) +(.2, 0) |- ++ (-.4, -.4) |- ($(irules.south west) +(0, .2)$) node [pos=.2, left] {§\ref{sec:intermediate:elim:proc}};
+    \path [line] (irules) -- (prules) node [midway, left] {§\ref{sec:intermediate:elim:impl}};
+    \path [line] (prules) -- (srules) node [midway, left] {§\ref{sec:intermediate:seq}};
+    \path [line, densely dotted] (srules) -- (vrules);
+
+    \node [explanation, right of=rules] (explrules) {
+      $\holtypejudgement\R{(\holtype{term} \times \holtype{term})\;\holtype{set}}$, $\holtypejudgement{t, t'}{\holtype{term}}$ \\
+      $\rewrite\R{t}{t'}$
+    };
+    \path [explline] (rules) -- (explrules);
+
+    \node [explanation, right of=nrules] (explnrules) {
+      $\holtypejudgement\R{(\holtype{term} \times \holtype{nterm})\;\holtype{set}}$, $\holtypejudgement{t, t'}{\holtype{nterm}}$ \\
+      $\rewrite\R{t}{t'}$
+    };
+    \path [explline] (nrules) -- (explnrules);
+
+    \node [explanation, right of=crules, pattern=checkerboard, draw=green!10, pattern color=green!10] (explcrules) {
+      $\holtypejudgement\R{(\holtype{string} \times (\holtype{term}\;\holtype{list} \times \holtype{nterm})\;\holtype{set})\;\holtype{set}}$ \\
+      \emph{(no semantics, combined proof with next phase)}
+    };
+    \path [explline] (crules) -- (explcrules);
+
+    \node [explanation, right of=irules] (explirules) {
+      $\holtypejudgement\R{(\holtype{string} \times (\holtype{term}\;\holtype{list} \times \holtype{pterm})\;\holtype{set})\;\holtype{set}}$ \\
+      $\holtypejudgement{t, t'}{\holtype{nterm}}$ \\
+      $\rewrite\R{t}{t'}$
+    };
+    \path [explline] (irules) -- (explirules);
+
+    \node [explanation, right of=prules] (explprules) {
+      $\holtypejudgement\R{(\holtype{string} \times \holtype{pterm})\;\holtype{set}}$, $\holtypejudgement{t, t'}{\holtype{pterm}}$ \\
+      $\rewrite\R{t}{t'}$
+    };
+    \path [explline] (prules) -- (explprules);
+
+    \node [explanation, right of=srules] (explsrules) {
+      $\holtypejudgement\rs{(\holtype{string} \times \holtype{pterm})\;\holtype{list}}$, $\holtypejudgement{t, t'}{\holtype{sterm}}$ \\
+      $\rewrite\rs{t}{t'}$
+    };
+    \path [explline] (srules) -- (explsrules);
+
+    \node [explanation, below of=explsrules, node distance=2.2cm] (explseval) {
+      $\holtypejudgement\rs{(\holtype{string} \times \holtype{sterm})\;\holtype{list}}$, $\holtypejudgement\sigma{\holconst{string} \holmap \holconst{sterm}}$ \\
+      $\holtypejudgement{t, u}{\holtype{sterm}}$ \\
+      $\seval\rs\sigma{t}{u}$
+    };
+    \path [explline] (srules.south) +(.6, 0) |- (explseval) node [color=black, pos=.82, above] {§\ref{sec:intermediate:bigstep}};
+
+    \node [explanation, right of=vrules] (explveval) {
+      $\holtypejudgement\rs{(\holtype{string} \times \holtype{value})\;\holtype{list}}$, $\holtypejudgement\sigma{\holconst{string} \holmap \holconst{value}}$ \\
+      $\holtypejudgement{t}{\holtype{sterm}}$, $\holtypejudgement{u}{\holtype{value}}$ \\
+      $\seval\rs\sigma{t}{u}$
+    };
+    \path [explline] (vrules) -- (explveval) node [color=black, midway, above] {§\ref{sec:intermediate:value}};
+
+    \node [explanation, below of=explveval, node distance=2.2cm] (explveval') {
+      $\holtypejudgement\sigma{\holconst{string} \holmap \holconst{value}}$ \\
+      $\holtypejudgement{t}{\holtype{sterm}}$, $\holtypejudgement{u}{\holtype{value}}$ \\
+      $\seval*\sigma{t}{u}$
+    };
+    \path [explline] (vrules.south) +(.6, 0) |- (explveval') node [color=black, pos=.82, above] {§\ref{sec:intermediate:ml}};
+
+    \node [above of=rules, node distance=1cm] {\bfseries Locale};
+    \node [above of=explrules, node distance=1cm] {\bfseries Types \& Semantics};
+
+    \path [relline] (explrules) -- (explnrules) node [midway, right] {\cref{thm:intermediate:named,thm:intermediate:named-compl}};
+    \path [relline] (explirules.south east) +(-.2, 0) -- ($(explirules.south east) +(-.2, -.4)$) node [midway, left] {\cref{thm:intermediate:elim:correctness,thm:intermediate:elim:completeness}} -- ($(explirules.south east) +(.4, -.4)$) |- ($(explirules.south east) +(0, .2)$);
+    \path [relline] (explprules) -- (explsrules) node [midway, right] {\cref{thm:intermediate:seq:correctness,thm:intermediate:seq:completeness}};
+    \path [relline] (explnrules.east) -- ($(explnrules.east) +(.8, 0)$) -- ($(explprules.east) +(.8, 0)$) node [midway, right] {§\ref{sec:intermediate:elim:discussion}} -- (explprules.east);
+    \path [relline] (explsrules) -- (explseval) node [midway, right] {\cref{thm:intermediate:bigstep}};
+    \path [relline] (explseval) -- (explveval) node [midway, right] {\cref{thm:intermediate:value}};
+    \path [relline] (explveval) -- (explveval') node [midway, right] {\cref{thm:intermediate:ml}};
+  \end{tikzpicture}
+
+  \small \tikz[baseline=-.3em] \path[line] (0, 0) -- (1, 0); compiler phase; \tikz[baseline=-.3em] \path [line, densely dotted] (0, 0) -- (1, 0); pseudo-phase \\
+  \tikz[baseline=-.3em] \path[explline] (0, 0) -- (1, 0); locale belonging to the semantics; \tikz[baseline=-.3em] \path [relline] (0, 0) -- (1, 0); correctness/completeness proof
+
+  \caption{Intermediate semantics and compiler phases}
+  \label{fig:intermediate}
+\end{figure}

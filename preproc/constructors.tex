@@ -1,0 +1,32 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Constructor functions}
+\label{sec:preproc:constructor}
+
+\authorship{
+  Portions of this section appear in the AFP entry \citetitle{hupel2017constructor}, authored by \citeauthor{hupel2017constructor}~\cite{hupel2017constructor}.
+  Users are recommended to refer to that AFP entry for the latest documentation.
+}
+
+\noindent
+For each data constructor $\holconst{C}_i$ of datatype $\tau$ (as exemplified above), Isabelle generates a function $\holtypejudgement{\holconst{C}_i}{\kappa_{i,1} \Rightarrow \ldots \Rightarrow \kappa_{i,n_i} \Rightarrow \tau}$.
+It behaves like a regular function, in that it can be passed to a higher-order function, partially applied, and generally be treated as a value.
+
+In implementations of programming languages, data constructors behave differently:
+An application of $\holconst{C}_i$ to $n_i$ arguments cannot be reduced further, but instead creates an ``atomic'' value.
+Hence, the question arises on how to represent partially applied constructors.
+
+Different functional languages answer this question differently.
+OCaml disallows partial application and forces users to explicitly write an anonymous function, e.g.\ $\lambda x.\; \holconst{C}_i\;t_1\;\ldots\;t_{n_i-1}\;x$, as does CakeML.
+Standard ML however allows that and internally constructs such a function.
+The naive approach of plain eta-expansion does not work in Isabelle, because many routines, including code preprocessing, spontaneously eta-contract terms.
+
+To bridge the gap, preprocessing introduces synthetic \emph{constructor functions}.
+For each data constructor $\holconst{C}_i$, it defines an additional function $\holconst{C'}\!\!\!_i$ as $\holconst{C'}\!\!\!_i\;t_1\;\ldots\;t_{n_i} = \holconst{C}_i\;t_1\;\ldots\;t_{n_i}$, having the same type as $\holconst{C}_i$.
+Every occurrences of $\holconst{C}_i$ is replaced by $\holconst{C'}\!\!\!_i$, except in the definition of $\holconst{C'}\!\!\!_i$.
+Thus, it is statically guaranteed that each constructor call is fully applied.
+
+For example, the term $\holconst{map}\;((\#)\;1)$ is rewritten to $\holconst{map}\;((\#')\;1)$.
+Unfolding the synthetic definition of $(\#')$ yields the expression $\holconst{map}\;(\lambda x.\; 1 \cons x)$.
+There, $\#$ appears in fully-applied form.

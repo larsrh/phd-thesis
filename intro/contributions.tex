@@ -1,0 +1,35 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Contributions}
+\label{sec:intro:contrib}
+
+Many theorem provers -- including Isabelle -- have the ability to generate executable code in some (typically functional) programming language from definitions, lemmas and
+proofs~\cite{BerghoferN-TYPES00,Letouzey02,BoespflugDG11,Shankar01,PVS-attachments,GreveKMMRRSVW08,BoyerM02}.
+This makes code generation part of the trusted kernel of the system.
+Myreen and Owens~\cite{myreen2014translation} closed this gap for the HOL4 system: they have implemented a tool that translates specifications from HOL4 into \emph{CakeML}, a subset of SML, and proves a theorem stating that a result produced by the CakeML code is correct with respect to the HOL functions.
+They also have a verified implementation of CakeML~\cite{kumar2014cakeml,tan2016cakeml}.
+
+Here, I go one step further and provide a once-and-for-all verified compiler from (deeply embedded) function definitions in Isabelle/HOL~\cite{nipkow2014semantics} into CakeML proving partial correctness of the generated CakeML code with respect to the original functions.
+This is comparable to the step from ``dynamic'' to ``static'' type checking.
+It also means that preconditions on the input to the compiler are explicitly given in the correctness theorem rather than implicitly by a failing translation.
+
+My compiler is in principle applicable to other languages than Isabelle/HOL or even HOL:
+Types are erased right away.
+Hence, the type system of the source language is irrelevant.
+I merely assume that the source language has a semantics based on \emph{equational logic}.
+
+All topics discussed in this thesis have been formalized in Isabelle; definitions and proofs are machine-checked.
+
+\paragraph{Publications}
+The following publications stem from work in this thesis:
+
+\begin{itemize}[label=\faFileTextO]
+  \item \fullcite{hupel2017lazycase}
+  \item \fullcite{hupel2017constructor}
+  \item \fullcite{hupel2017dict}
+  \item \fullcite{hupel2018dict}
+  \item \fullcite{hupel2018compiler}
+  \item \fullcite{hupel2018cakeml}
+  \item \fullcite{hupel2019algebra}
+\end{itemize}

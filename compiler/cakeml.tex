@@ -1,0 +1,318 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{CakeML}
+\label{sec:intermediate:cakeml}
+
+CakeML's semantics has been formalised in Lem \cite{mulligan2014lem}.
+For the correctness proof of the CakeML compiler, its authors have extracted this into HOL theories.
+In this work, I directly target CakeML abstract syntax trees (thereby bypassing the parser) and use its big-step semantics, which I have extracted into Isabelle~\cite{hupel2018cakeml}.
+
+Consequently, there is not a single correctness result in Isabelle, but rather two parts:
+A frontend from Isabelle to CakeML, and a backend from CakeML to machine code, the latter of which is provided by the ongoing work on CakeML~\cite{tan2016cakeml}.
+
+In order to execute the Isabelle-generated CakeML syntax trees, there are three choices:
+\begin{enumerate}
+  \item
+    turning CakeML's big step semantics into an executable function within Isabelle using the predicate compiler \cite{berghofer2009inductive},
+  \item
+    executing the functional big-step semantics directly within Isabelle \cite{owens2016functional}, and
+  \item
+    printing the tree as an s-expression and compiling it with the official CakeML compiler.%
+    \thyrefafp*{CakeML}{CakeML_Compiler}
+\end{enumerate}
+
+\subsection{CakeML's semantic functions}
+
+In §\ref{sec:background:cakeml}, I have outlined the work that was required to integrate the Lem export of CakeML with Isabelle.
+Notwithstanding that, the CakeML theories describe an entirely separate universe from the definitions in §\ref{sec:terms}.
+Notably, it is not possible to instantiate the \holclass{term} class for CakeML expressions.
+In this section, I will discuss the differences between my and CakeML's implementation of term operations.
+
+Almost all of CakeML's semantic functions take (a fragment of) an environment into account.
+An environment consists of two \emph{namespaces}: the \emph{value} and the \emph{constructor} namespace.
+The value namespace records existing bindings.
+It is comparable to the $\Gamma$ and $\sigma$ used in the various intermediate semantics.
+The constructor namespace keeps track of defined datatypes and their constructors, including their arities.
+
+\subsubsection{CupCakeML: A purely-functional subset of CakeML}
+\label{sec:intermediate:cakeml:cupcake}
+
+The core of CakeML's big-step semantics is organized in three mutually recursive inductive predicates (evaluating an expression, a list of expressions, and a match expression) with a total of over thirty rules.
+It is that large because it has to deal with exceptions, modules, step counters, and other features that their compiler supports, but I do not need in the formalization.
+For that reason, I have defined the subset \emph{CupCakeML} which only allows the syntactic forms known from the \holtype{sterm} type.
+It also enforces that all occurring values have an empty module environment and a consistent datatype environment.
+
+I define a smaller big-step semantics comprising a single inductive predicate with twelve cases.
+Then, I prove equivalence to the original semantics, that is, both correctness and completeness, under the assumption that the expression and initial environments are in the supported fragment.
+The supported fragment has also been proved to be closed under evaluation.
+
+The namespaces are allowed to vary in closures, since CakeML supports introducing new type definitions inside a program.
+Tracking this would greatly complicate the proofs.
+Hence, I assume a fixed constructor namespace and enforce that all values use exactly that one.
+This information is provided by the \holconst{C\_info} parameter (\cref{code:deep:constructors}) that is generated during embedding.
+
+\subsubsection{Patterns and matching}
+
+\begin{code}
+  \begin{lstlisting}[language=Isabelle]
+fun pat_to_cake :: pat $\Rightarrow$ Cake.pat where
+pat_to_cake (Patvar //s//) = Cake.Pvar //s//
+pat_to_cake (Patconstr //s// //args//) =
+  Cake.Pcon (Some (Cake.Short //s//)) (map pat_to_cake args)\end{lstlisting}\holconstindex{pat\_to\_cake}
+  \caption{Translation between patterns}
+  \label{code:intermediate:cakeml:pat}
+\end{code}
+
+CakeML defines three distinct datatypes for patterns, expressions and values.
+Because they model the syntax of a real-world programming language, they are much more complex than the types required for term rewriting.
+
+The most notable difference in types is that patterns and constructor values in CakeML are $n$-ary.
+This corresponds closely to the \holtype{value} (§\ref{sec:terms:types:value}) and \holtype{pat} (§\ref{sec:terms:types:pat}) types that I introduced for the evaluation semantics (§\ref{sec:intermediate:value}).
+Consequently, a conversion function between the pattern types is easily defined (\cref{code:intermediate:cakeml:pat}).
+Additional CakeML complexities, for example pattern wildcards ($\holkeyword{case}\;t\;\holkeyword{of}\;\_ \Rightarrow u$) or qualified constructor names (\holconst{List.Cons}) are excluded from the CupCakeML fragment.
+
+CakeML's matching function has three possible results: \holconst{Match}, \holconst{No\_match}, and \holconst{Match\_type\_\allowbreak{}error}.
+The latter result may occur when the pattern and the object disagree about their arity.
+For example, consider the ill-typed program $\holkeyword{case}\;\holconst{T}\;x\;\holkeyword{of}\;\holconst{T} \Rightarrow y$.
+In my implementation, matching $\holconst{T}\;x$ to \holconst{T} would result in \holconst{None}.
+However, in CakeML it returns \holconst{Match\_type\_error}.
+A similar check happens when constructing constructor values, too.
+In short, data constructors must always occur with all arguments supplied on right-hand and left-hand sides.
+
+During embedding (§\ref{sec:deep}), all type information is erased.
+Fully applied constructors in terms can be easily guaranteed by the introduction of constructor functions (§\ref{sec:preproc:constructor}).
+For patterns however, this must be ensured throughout the compilation pipeline; it is (like other syntactic constraints) another side condition imposed on the rule set (§\ref{sec:intermediate:wellformed}).
+
+For the purposes of the correctness proof, a CakeML type error is treated equivalently to non-termination.
+This means that should the evaluation of a program end in a type error, there are no guarantees.
+However, I avoid this problem by running the CakeML type checker on the generated programs (§\ref{sec:conclusion:eval}).
+
+An additional complication comes from the shallow nature of the typing check.
+Not all ill-typed constructors yield a type error.
+For example, matching the object $\holconst{T}\;\holconst{U2}\;(\holconst{V}\;x)$ against the pattern $\holconst{T}\;\holconst{U1}\;\holconst{V}$ would result in \holconst{No\_match}.
+\holconst{U2} and \holconst{U1} do not match.
+At that point, the matching function does not proceed further and the arity mismatch in the second argument remains hidden.
+
+Similarly to my implementation of matching, CakeML does not check for linearity of patterns.
+However, the linearity check happens in the big-step semantics, so it needs to be dealt with there.
+
+\subsubsection{Closures}
+
+Closures are syntactically similar between the two different semantics.
+In particular, the \holconst{mk\_rec\_env} function I introduced for the ML-style evaluation semantics (§\ref{sec:intermediate:ml}) has been modelled after its counterpart in the CakeML semantics.
+
+It remains to deal with application of closures to values.
+CakeML models function application as a binary operator, similarly to other operators such as addition on machine words.
+The CupCakeML fragment enforces that application is the only operator that may occur in generated code, since my formalization never emits operations on machine types.
+The complication here is that in my semantics, application always requires matching.
+In CakeML, closures always take exactly one argument which is not matched, but directly bound as a variable.
+The body then may or may not perform a matching step.
+I will explain this later when introducing an appropriate correspondence relation (\cref{code:intermediate:cakeml:v-corr}).
+
+\subsection{Translation from \holtype{sterm} to \holtype{exp}}
+
+\begin{code}
+  \begin{lstlisting}[language=Isabelle]
+fun
+  sterm_to_cake :: string set $\Rightarrow$ sterm $\Rightarrow$ Cake.exp and
+  clauses_to_cake :: string set $\Rightarrow$ (term $\times$ sterm) list $\Rightarrow$ (Cake.pat $\times$ Cake.exp) list
+where
+sterm_to_cake _ (Svar //s//) = Cake.Var (Cake.Short //s//)
+sterm_to_cake _ (Sconst //s//) = Cake.Var (Cake.Short //s//)
+sterm_to_cake //S// ($t_1$ $\$$ $t_2$) =
+  Cake.App Cake.Opapp [sterm_to_cake //S// $t_1$, sterm_to_cake //S// $t_2$]
+sterm_to_cake //S// (Sabs //cs//) =
+  ||let|| //n// = Fresh.run Fresh.create (//S// $\cup$ constructors) ||in||
+    Cake.Fun //n// (Cake.Mat (Cake.Var (Cake.Short //n//)) (clauses_to_cake //S// //cs//))
+clauses_to_cake //S// //cs// =
+  [(pat_to_cake (mk_pat //pat//), sterm_to_cake (frees //pat// $\cup$ //S//) //t//)) | (//pat//, //t//) $\leftarrow$ //cs//]\end{lstlisting}\holconstindex{sterm\_to\_cake}\holconstindex{clauses\_to\_cake}
+
+  \caption{Translation from \holtype{sterm}s to \holtype{exp}s}
+  \label{code:intermediate:cakeml:translation}
+\end{code}
+
+After the series of translations described in the earlier sections, the terms in my formalization are syntactically close to CakeML's terms (\holtype{Cake.exp}).
+The only remaining differences are outlined below:
+
+\begin{itemize}
+  \item
+    CakeML does not combine abstraction and pattern matching.
+    For that reason, I need to translate $\Lambda\;[p_1 \Rightarrow t_1, \ldots]$ into $\Lambda x.\;\holkeyword{case}\;x\;\holkeyword{of}\;p_1 \Rightarrow t_1 \mid \ldots$, where $x$ is a fresh variable name.
+    I reuse the \holtype{fresh} monad (§\ref{sec:intermediate:named:fresh}) to obtain a bound variable name.
+  \item
+    CakeML has two distinct syntactic categories for identifiers\index{identifier} (that can represent variables or constants) and data constructors.
+    My term types however have two distinct syntactic categories for constants (that can represent function definitions or data constructors) and variables.
+    The necessary prerequisites to deal with this are already present in the ML-style evaluation semantics (§\ref{sec:intermediate:ml}) which conflates constants and variables, but has a dedicated \textsc{Constr} rule for data constructors.
+\end{itemize}
+
+\noindent
+The corresponding translation functions are given in \cref{code:intermediate:cakeml:translation} (the type prefix \holtype{Cake} indicates a CakeML type).
+
+In the \holconst{Sabs} case, is not necessary to thread through already created variable names, only existing names.
+The reason is simple: a generated variable is bound and then immediately used in the body.
+Shadowing the name somewhere in the body does not cause any problems.
+This is in contrast to the \holconst{term\_to\_nterm} function (\cref{code:intermediate:named:translation}), which needs to track all bound variable names.
+
+The $S$ parameter then needs to be initialized with all existing constants; similarly to §\ref{sec:intermediate:named:compilation}, this can be achieved with \holconst{all\_consts}.
+
+\subsection{Correspondence relations}
+
+\begin{code}[t]
+  \[
+    \inferrule*[left=Var]{
+    }{
+      \cakerelexp{\holconst{Svar}\;n}{\holconst{Cake.Var}\;n}
+    }
+    \quad
+    \inferrule*[left=Const]{
+      n \notin \holconst{C}
+    }{
+      \cakerelexp{\holconst{Sconst}\;n}{\holconst{Cake.Var}\;n}
+    }
+  \]
+  \[
+    \inferrule*[left=Constr]{
+      n \in \holconst{C} \\
+      \holconst{rel}\;(\approx_\text{\cakesym})\;\mathit{ts}\;\mathit{us}
+    }{
+      \cakerelexp{\listcomb{\mathit{name}}{\mathit{ts}}}{\holconst{Cake.Con}\;(\holconst{Some}\;(\holconst{Cake.Short}\;\mathit{name})\;\mathit{us})}
+    }
+  \]
+  \[
+    \inferrule*[left=App]{
+      \cakerelexp{t_1}{u_1} \\
+      \cakerelexp{t_2}{u_2}
+    }{
+      \cakerelexp{\app{t_1}{t_2}}{\holconst{Cake.App}\;\holconst{Cake.Opapp}\;[u_1, u_2]}
+    }
+  \]
+  \[
+    \inferrule*[left=Fun]{
+      n \notin \holconst{ids}\;(\Lambda\;\cs) \\
+      n \notin \holconst{all\_consts} \\
+      \holconst{rel}_\holtype{list}\;(\holconst{rel}_\holtype{prod}\;(\lambda\;t\;p.\; p = \holconst{term\_to\_pat}\;(\holconst{pat\_to\_cake}\;t))\;(\approx_\text{\cakesym}))\;\cs\;\mathit{ml\_cs}
+    }{
+      \cakerelexp{\Lambda\;\cs}{\holconst{Cake.Fun}\;n\;(\holconst{Cake.Mat}\;(\holconst{Cake.Var}\;n))\;\mathit{ml\_cs}}
+    }
+  \]
+  \[
+    \inferrule*[left=Mat]{
+      \cakerelexp{t}{u} \\
+      \holconst{rel}_\holtype{list}\;(\holconst{rel}_\holtype{prod}\;(\lambda\;t\;p.\; p = \holconst{term\_to\_pat}\;(\holconst{pat\_to\_cake}\;t))\;(\approx_\text{\cakesym}))\;\cs\;\mathit{ml\_cs}
+    }{
+      \cakerelexp{\app{\Lambda\;\cs}{t}}{\holconst{Cake.Mat}\;u\;\mathit{ml\_cs}}
+    }
+  \]
+
+  \caption{Expression correspondence}
+  \label{code:intermediate:cakeml:exp-corr}
+\end{code}
+
+I define two different correspondence relations: one for expressions and one for values.
+Both share the $\approx_\text{\cakesym}$ operator (where \cakesym*{} is the official CakeML icon), because they can be disambiguated by types.
+There is no separate relation for patterns, because their translation is simple.
+
+First, I will examine the expression correspondence (\cref{code:intermediate:cakeml:exp-corr}).
+%
+\begin{semantics}
+  \item[Var]
+    Variables are directly related by identical name.
+  \item[Const]
+    Recall that constructors are treated specially in CakeML.
+    In order to not confuse functions or variables with data constructors themselves, the relation demands that the constant name is not a constructor.
+  \item[Constr]
+    Constructors are directly related by identical name, and recursively related arguments.
+  \item[App]
+    CakeML does not just support general function application but also unary and binary operators.
+    In fact, function application is represented by the binary operator \holconst{Opapp}.
+    The \holconst{sterm\_to\_exp} translation function never generates other operators.
+    Consequently, the correspondence is restricted to \holconst{Opapp}.
+  \item[Fun/Mat]
+    Observe the symmetry between these two cases:
+    In my term language, matching and abstraction are combined, which is not the case in CakeML.
+    This means relating a case abstraction to a CakeML function containing a match, and a case abstraction applied to a value to just a CakeML match.
+    The additional requirement is that the bound variable name in a CakeML function must not occur in the clauses nor be a known constant name (\cref{code:deep:constructors}).
+\end{semantics}
+
+\begin{code}[t]
+  \[
+    \inferrule*[left=Constr]{
+      \holconst{rel}\;(\approx_\text{\cakesym})\;\mathit{vs}\;\mathit{us}
+    }{
+      \cakerelval{\holconst{Vconstr}\;\mathit{name}\;\mathit{vs}}{\holconst{Cake.Conv}\;(\holconst{Some}\;(\mathit{name}, \mathit{type})\;\mathit{us})}
+    }
+  \]
+  \[
+    \inferrule*[left=Abs]{
+      n \notin \holconst{ids}\;(\Lambda\;\cs) \\
+      n \notin \holconst{all\_consts} \\
+      \holconst{rel}_\holtype{list}\;(\holconst{rel}_\holtype{prod}\;(\lambda\;t\;p.\; p = \holconst{term\_to\_pat}\;(\holconst{pat\_to\_cake}\;t))\;(\approx_\text{\cakesym}))\;\cs\;\mathit{ml\_cs} \\
+      \forall x \in \holconst{ids}\;(\Lambda\;\cs).\;
+        \cakerelval{\Gamma\;x}{\holconst{map\_of}\;\mathit{env}\;x}
+    }{
+      \cakerelval{
+        \holconst{Vabs}\;\cs\;\Gamma
+      }{
+        \holconst{Cake.Closure}\;\mathit{env}\;n\;(\holconst{Cake.Mat}\;(\holconst{Cake.Var}\;n)\;\mathit{ml\_cs})
+      }
+    }
+  \]
+  \caption{Value correspondence}
+  \label{code:intermediate:cakeml:v-corr}
+\end{code}
+
+\noindent
+The value correspondence is structurally simpler, but unfortunately, syntactically noisier (\cref{code:intermediate:cakeml:v-corr}).
+
+\begin{semantics}
+  \item[Constr]
+    Constructor values are compared recursively.
+  \item[Abs]
+    Comparing closures has multiple requirements:
+    \begin{itemize}
+      \item the CakeML closure must take a parameter with the bound variable name $n$ that is immediately matched,
+      \item $n$ must be a fresh variable,
+      \item the clauses must correspond according to the expression correspondence, and
+      \item the environments must correspond recursively, but only on the identifiers that occur in the clauses.
+    \end{itemize}
+  \item[RecAbs]
+    This case is identical to non-recursive closures, but lifted to lists of clauses.
+    It is omitted \cref{code:intermediate:cakeml:v-corr} because of its syntactic size.
+\end{semantics}
+
+\subsection{Correctness}
+
+\begin{lemma}[Correctness of \holconst{sterm\_to\_cake}]
+  \[
+    \cakerelexp{t}{\holconst{sterm\_to\_cake}\;(\holconst{ids}\;t \cup \holconst{all\_consts})\;t}
+  \]
+\end{lemma}
+
+\begin{lemma}[Composition of value and extensional correspondence]\label{thm:intermediate:cake:ext}
+  \[ \cakerelval{v}{u} \wedge \corre{v'}{v} \implies \cakerelval{v'}{u} \]
+\end{lemma}
+
+\noindent
+I use the same trick as in §\ref{sec:intermediate:value:sublocale} to obtain a suitable environment for CakeML evaluation based on the rule set $\rs$.
+Assuming this environment, the correctness theorem can be stated as follows:
+
+\begin{theorem}[Correctness]
+  If a CakeML expression $e$ terminates with a value $u$ in the CakeML semantics and $\cakerelexp{t}{e}$ there is a value $v$ such that $\cakerelval{v}{u}$ and $t$ evaluates to $v$.
+\end{theorem}
+
+\begin{proof}
+  The proof proceeds by induction on the CakeML evaluation.
+  I will discuss some of the ideas here.
+
+  The most interesting case is application.
+  By assumption, $t = \app{t_1}{t_2}$ (similarly for $e$).
+  By induction hypothesis, $t_1$ evaluates to a (possibly recursive) closure.
+  I need to show that $t$ evaluates to a value $\holtypejudgement{v}{\holtype{value}}$ corresponding to $u$.
+
+  Assume that $e_1$ evaluates to a non-recursive closure.
+  The recursive case is similar.
+
+  Consequently, according to \cref{code:intermediate:cakeml:exp-corr}, the closure must take a variable with a fresh name and immediately match it against a list of clauses.
+  This additional variable gets added to the environment; hence, \cref{thm:intermediate:ml:ext,thm:intermediate:cake:ext} must be used to establish correspondence.
+\end{proof}

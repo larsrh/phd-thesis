@@ -1,0 +1,31 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Results}
+\label{sec:conclusion:eval}
+
+The result of this thesis is a substantial formalization of a real-world compiler.
+
+\begin{center}
+  \begin{tabular}{lrr}
+    \textbf{Component} & \textbf{Size} (ML) & \textbf{Size} (Isar) \\
+    Dictionary Construction & 2,100 & 800 \\
+    Higher-Order Term Algebra & n/a & 3,800 \\
+    CakeML {\small\itshape (excluding generated parts)} & 300 & 4,100 \\
+    CupCakeML & n/a & 900 \\
+    Preprocessing & 1,100 & 300 \\
+    Compiler & n/a & 14,100 \\\hline
+    & 3,500 & 24,000
+  \end{tabular}
+\end{center}
+
+\noindent
+The compiler is able to emit concrete syntax (using s-expressions, §\ref{sec:intermediate:cakeml}) of CakeML that can be consumed by the CakeML compiler, version 2.0.
+It comes with a correctness proof that covers all phases and a completeness proof that only covers some phases.
+For that reason, it is not advisable to turn off type inference when running the CakeML compiler.
+
+A remaining issue is performance of the compiler.
+In particular, the dictionary construction and the deep embedding are expensive operations.
+The former needs to define new functions which are subject to the overhead of the \holcommand{function} command.
+The latter carries out proofs by induction, potentially handling large terms.
+Luckily, both can be sped up by using parallelism, which is easily achieved with Isabelle/ML.

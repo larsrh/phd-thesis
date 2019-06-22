@@ -1,0 +1,60 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Lazy evaluation}
+\label{sec:preproc:lazy}
+
+\authorship{
+  Portions of this section appear in the AFP entry \citetitle{hupel2017lazycase}, authored by \citeauthor{hupel2017lazycase}~\cite{hupel2017lazycase}.
+  Users are recommended to refer to that AFP entry for the latest documentation.
+}
+
+\noindent
+HOL has no built-in notion of pattern matching.
+Since my initial \holtype{term} type (§\ref{sec:background:rewriting}) is modelled after it, this restriction applies there too.
+
+Instead, what looks like pattern matching in the input syntax, is in fact syntax sugar for \holkeyword{case} functions.
+For example, the expression
+%
+  \[\holkeyword{case}\;\mathit{xs}\;\holkeyword{of}\;[] \Rightarrow a \mid y\cons ys \Rightarrow b\;y\;\mathit{ys}\]
+is internally represented as
+  \[ \holconst{case\_list}\;a\;b\;xs \]
+
+Every datatype $\tau$ comes equipped with a corresponding \holkeyword{case} function $\holconst{case\_}\tau$.
+Nested pattern matches are translated to nested case function applications.
+\holkeyword{if}-\holkeyword{then}-\holkeyword{else} expressions are a special case of pattern matching, namely it can be directly represented as a $\holconst{case\_bool}$.
+
+A naive translation of nested function applications would yield strict evaluation of matches and \holkeyword{if}-\holkeyword{then}-\holkeyword{else}.
+This is in conflict to the semantics of these constructs in CakeML.
+Therefore, I introduce \holtype{unit}-abstraction to defer evaluation of the cases.%
+\thyrefafp{Lazy_Case}{Lazy_Case}
+
+For a datatype $\tau$, the type of $\holconst{case\_}\tau$ is $(\kappa_{1,1} \Rightarrow \ldots \Rightarrow \kappa_{1,n_1} \Rightarrow \alpha) \Rightarrow \ldots \Rightarrow (\kappa_{k,1} \Rightarrow \ldots \Rightarrow \kappa_{k,n_1} \Rightarrow \alpha) \Rightarrow \tau \Rightarrow \alpha$.
+That is, it is a higher-order function, where the first $k$ arguments are functions from $n_i$ constructor parameters to $\alpha$.
+I insert a ``dummy'' unit argument for each constructor that has no parameters.
+
+Consider the factorial function:
+%
+  \[ \holconst{fact}\;n = \holkeyword{if}\;n = 0\;\holkeyword{then}\;1\;\holkeyword{else}\;n * \holconst{fact}\;(n - 1) \]
+%
+It can be rewritten to use pattern matching:
+%
+  \[ \holconst{fact}\;n = (\holkeyword{case}\;n = 0\;\holkeyword{of}\;\holconst{True} \Rightarrow 1\mid\holconst{False}\;n * \holconst{fact}\;(n - 1)) \]
+%
+After preprocessing:
+%
+  \[ \holconst{fact}\;n = \holconst{case\_bool'}\;(\lambda (\holtypejudgement{u}{\holtype{unit}}).\;1)\;(\lambda (\holtypejudgement{u}{\holtype{unit}}).\;n * \holconst{fact}\;(n - 1))\;(n = 0) \]
+%
+The definition of $\holconst{case\_bool'}$ itself is straightforward:
+  \[
+  \begin{array}{ll}
+    \holconst{case\_bool'}\;\holconst{True}\;t\;f &= t\;() \\
+    \holconst{case\_bool'}\;\holconst{False}\;t\;f &= f\;()
+  \end{array}
+  \]
+%
+This scheme means that CakeML's conditional expressions will never occur in generated code.
+However, pattern matching will be used, because \holkeyword{case} functions are regular functions and as such subjects to the pattern compilation phase (§\ref{sec:intermediate:elim}).
+
+Another way to avoid the problem of strict evaluation would be to add a pattern-matching construction inside the \holtype{term} type.
+However, this would instead have meant special treatment of the \holkeyword{case} functions in the deep embedding (§\ref{sec:deep}), because Isabelle's \texttt{term} type also does not have pattern matching.

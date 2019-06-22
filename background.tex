@@ -1,0 +1,391 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\noindent
+This chapter describes in detail necessary technical background on Isabelle that is relevant for understanding the remainder of this thesis.
+
+\section{Isabelle design}
+
+One of the defining features of Isabelle as compared to other proof assistants in the same family is its modular logic design~\cite{paulson1990isabelle}:
+the kernel provides the minimal logic \emph{Pure,} on top of which other logics can be implemented by users.
+Pure, in its essence, is a framework for natural deduction proofs.
+Proved statements are internally represented as values of the abstract type \mltype{thm}.
+Standard ML's typing discipline ensures that such values can only be constructed through a finite set of primitives that represent rules or axiom schemas of constructive logic.
+
+The most basic rule is \emph{modus ponens:} two statements $P \implies Q$ and $P$ can be combined to deduce $Q$.
+As is common in literature, this thesis will frequently express such inferences using the following notation:
+\[
+  \inferrule*{P \implies Q \\ P}{Q}
+\]
+
+\noindent
+Based on such primitives, a variety of automated \emph{tactics} are provided.
+Tactics in their most basic form are ML programs that transform theorems into theorems.
+This can be used for user interaction when proving theorems:
+\begin{enumerate}
+  \item
+    The user indicates that they would like to prove the statement $P$.
+  \item
+    Because the system does not know yet that $P$ holds, it generates the \emph{goal state} $P \implies P$.
+    A goal state is an implication whose premises are called \emph{subgoals} and the conclusion is the statement that the user wants proved.
+    Observe that $P \implies P$ holds for all $P$: it is an axiom schema.
+  \item
+    The user can apply tactics that manipulate some (or all) subgoals.
+    For example, a goal state $Q_1 \wedge Q_2 \implies P$ can be transformed into $Q_1 \implies Q_2 \implies P$; an instance of conjunction introduction, where a conjunction is split into two separate subgoals.
+  \item
+    Eventually, if all subgoals disappear (have been \emph{discharged}) and the goal state is $P$, the system will accept this as a proved statement.
+    Because the goal state is a value of type \mltype{thm} at all times, $P$ is directly usable as a theorem.
+\end{enumerate}
+
+\noindent
+Isabelle comes equipped with a set of standard tactics, for example the simplifier, which is able to rewrite terms according to (possibly conditional) rewrite rules $t \equiv u$, and a classical reasoner based on a tableau calculus~\cite{paulson1999generic}.
+
+System interaction can happen on two ``layers'': the raw ML programming environment, or the high-level language Isar~\cite{wenzel2002isar}.
+For most purposes, users do not manipulate low-level ML values, but can instead use the abstract Isabelle/Isar syntax.
+
+\begin{code}[t]
+  \begin{lstlisting}
+datatype $\alpha$ seq = Empty | Seq $\alpha$ ($\alpha$ seq)
+
+fun conc :: $\alpha$ seq $\Rightarrow$ $\alpha$ seq $\Rightarrow$ $\alpha$ seq where
+conc Empty //ys// = //ys//
+conc (Seq //x// //xs//) //ys// = Seq //x// (conc //xs// //ys//)\end{lstlisting}
+  \caption{A simple functional program in Isabelle/HOL}
+  \label{code:background:isabelle}
+\end{code}
+
+The most commonly used logic of Isabelle is \emph{Higher-Order Logic} (\emph{HOL} for short) based on work by Gordon~\cite{gordon1993hol}.
+Besides standard features of classical higher-order logic (definitions, quantifiers, connectives) it provides tools for functional programming, e.g.\ recursive datatypes and functions with pattern matching.
+
+\section{Terminology}
+\label{sec:background:terminology}
+
+The term \index{theory} has two meanings:
+on a physical level, files containing Isabelle/Isar sources; on a theoretical level, a collection of definitions, constants, theorems, and other logical content.
+A theory file is a sequence of Isar \emph{commands} that alter the logical theory.
+I will frequently refer to the actual Isabelle source files that accompany this thesis as \emph{the formalization}.
+
+Higher-level tools in Isabelle are usually referred to as \emph{packages}.
+For example, the two facilities that enable functional programming are the \holcommand{function}\holcommandindex{function} and the \holcommand{datatype}\holcommandindex{datatype} packages~\cite{krauss2010recursive,krauss2009fun,blanchette2014datatypes}.
+A simple example of their interplay is given in \cref{code:background:isabelle}.
+Because in the architecture of Isabelle, all of these tools need to justify their constructions against the Isabelle kernel.
+An implementation error would not produce an unsound theory; instead, the kernel would print an error that some construction failed.
+
+Besides theorems, the second foundational ingredient of an Isabelle theory are \emph{constants}.
+Contrary to what the name suggests, the type of a constant can also be a function type.
+The logical distinction between constants and \emph{variables} in Isabelle is that constants may have definition (or multiple, see §\ref{sec:background:types}), whereas variables may not.
+Datatype constructors and functions, as in \cref{code:background:isabelle}, are also constants, as far as the kernel is concerned; even though they have no user-accessible definition.
+Still, they are internally constructed and defined by their respective packages.
+
+Internally, Isabelle keeps track of a special kind of variable: \emph{schematic variables}\index{schematic variable}.
+Schematic variables can be instantiated with arbitrary terms.
+This is an implementation trick to avoid quantifiers in many situations.
+
+A theory can be augmented with arbitrary auxiliary data.
+A particular extension is referred to as a \emph{proof context,} or \emph{context} for short.
+Contexts, for example, keep track of fixed variables and their types, and local assumptions that are not valid on the global theory level.
+Most frequently, Isabelle users encounter contexts when they write a structured proof.
+Furthermore, contexts enable modular reasoning (§\ref{sec:terms:prelim:modularity}).
+
+\paragraph{Certifying and verified routines}
+Consider a routine that takes a value $x$, transforms it according to a function $f$, and ensures that the result $y = f\;x$ satisfies a predicate $P$.
+In proof assistants, there are two ways to implement this:
+\begin{enumerate}
+  \item
+    A block of ML code analyses the value $x$, defines a new object $y$ and carries out a proof that $P\;y$.
+    This proof may fail if the ML code has an error, or if some precondition is not satisfied.
+  \item
+    The function $f$ is implemented inside the logic, together with a proof that $P\;(f\;x)$ holds for all $x$.
+    This is less flexible, but the routine has been shown to be correct once and for all.
+\end{enumerate}
+
+\noindent
+The first strategy is known as \keyword{certifying}, because after each run, it produces a single certificate that the generated object is valid.
+Contrary to that, the second one is called as \keyword{verified}, because the implementer has given a full correctness proof.
+Both approaches have their own (dis)advantages, which means they are often mixed, such as in this formalization.
+
+\paragraph{Notational conventions}
+As can be observed in \cref{code:background:isabelle}, Isar notation is similar to that of programming languages like Haskell or ML.
+For easier readability, code samples are slightly modified from their actual representation that can be processed by Isabelle.
+
+By convention, types and constants are set in \holconst{typewriter} font.
+Term variables are, as is usual in mathematics, set in $\mathit{italics}$.
+
+An actual Isabelle source file (a \keyword{theory}) is composed of a sequence of commands.
+Commands are set in \holcommand{sans-serif}.
+Special syntactic constructs in terms, like branching, are written as $\holkeyword{if}\;P\;\holkeyword{then}\;x\;\holkeyword{else}\;y$.
+
+\section{Type system}
+\label{sec:background:types}
+
+Isabelle implements an ML-style \emph{simple type system} with \emph{schematic polymorphism}.
+Types can be formed by type constructors (e.g.\ \holtype{list}) and type variables ($\alpha, \beta, \ldots$).
+Composite types are written in postfix notation, i.e., a list of integers is written as $\holtype{int}\;\holtype{list}$.
+All types in HOL are non-empty, that is, they have at least one inhabitant.
+
+\paragraph{Polymorphism}
+Isabelle supports \emph{type schemes}\index{type scheme} (or \emph{polytypes} in recent literature) \cite{milner1978polymorphism,hindley1969principal}:
+types can be quantified at the outermost level.
+For example, $\forall \tau.\; \tau\;\holconst{list}$ is a valid type scheme for the empty list $[]$.
+In contrast, $(\forall \tau.\; \tau\;\holconst{list})\;\holconst{list}$ is not admissible as a type scheme for the list containing the empty list $[[]]$, because the quantifier is nested inside a type constructor; i.e., no second-rank polymorphism is allowed~\cite{botlan2003mlf}.
+
+To implement this, Pure does not provide an explicit type quantifier; instead, it uses schematic polymorphism.
+In addition to type variables, there are also \emph{schematic type variables} that can be instantiated.\index{schematic variable}
+Those are prefixed with a question mark: $?\alpha$.
+This distinction becomes important later for technical reasons (§\ref{sec:preproc:dict:elim:impl}).
+Users can largely ignore schematic type variables, as the system automatically introduces them.
+
+\begin{code}
+  \begin{lstlisting}
+consts size :: $\alpha$ $\Rightarrow$ nat
+
+overloading size_list $\equiv$ size :: $\alpha$ list $\Rightarrow$ nat
+begin
+
+  definition size_list where
+  size_list = List.length
+
+end
+  \end{lstlisting}
+  \caption{Declaration of a constant and overloaded definitions}
+  \label{code:background:overloading}
+\end{code}
+
+\paragraph{Overloading}
+Isabelle supports \emph{overloading} of constants based on their type.
+It is possible to declare a constant with a polymorphic type and then give definitions for a specific instantiation~\cite{kuncar2018consistent}.
+As an example, consider \cref{code:background:overloading} that declares a function that should represent the ``size'' of a value.
+As defined there, it works for lists and can be extended for other types.
+
+This mechanism is very flexible, but is hardly employed directly by users.
+Instead, the system implements \emph{type classes} based on overloading.
+Type classes are widely used in the Isabelle community and require special treatment for the purpose of this thesis (§\ref{sec:preproc:dict}).
+
+\section{Executability}
+\label{sec:background:code}
+
+\index{executability|see{executable}}
+Specifications formalized in Isabelle/HOL -- a classical logic -- are not necessarily \keyword{executable}.
+This affects proofs who may use classical constructs like law of excluded middle and Hilbert choice.
+However, this thesis is concerned with generating a functional program that can be compiled to machine code from Isabelle specifications.
+
+This mismatch can be reconciled by identifying an executable subset of types and definitions that can be translated into a functional program.
+Importantly, this is not a new concept and can be traced back to previous work in this area, most recently by Haftmann~\cite{haftmann2010codegeneration,haftmann2010haskell}.
+In general, that subset can be characterized as ``functional program in, functional program out''.
+However, there are a few notable exceptions:
+HOL is more expressive than programming languages; for example, it is possible to quantify over an infinite set, which is naturally not executable.
+By default, specifications that are created by \holcommand{datatype}\holcommandindex{datatype} and \holcommand{function}\holcommandindex{function} and that only use other executable functions are themselves executable:
+these packages have been designed with executability in mind.
+
+Apart from \holcommand{function}, which enables definition of recursive functions, there is also the \holcommand{definition}\holcommandindex{definition} command.
+It only supports non-recursive, non-pattern-matching definitions.
+For the purposes of this thesis, their internal implementation differences are not relevant: both allow introducing constants into a theory based on \emph{defining equations}\index{equation, defining}.
+
+Isabelle's code generator also supports post-hoc introduction of executability of a specification.
+Sometimes it can be more convenient to specify a constant using the non-executable fragment, for example using an unconstrained quantifier.
+Later on, a \emph{code equation}\index{equation, code} can be added to the theory, which will then be used instead of the original defining equation (§\ref{sec:preproc:dict:current}).
+Code equations can override any existing definition.
+In a nutshell, a specification is executable if its transitive set of code equations only use recursion and pattern matching.
+In this thesis, the term \emph{defining equation} is preferred, because the point at which they are introduced into the theory does not matter to the compiler.
+
+Even though the term ``executability'' suggests some form of efficient program on hardware, it is not necessary that executable code has to be executed outside of Isabelle.
+Most notably, the simplifier can be set up to only use the defining equations, which could be used to emulate a graph-reduction style~\cite{hudak1989conception} evaluation inside the Isabelle kernel.\thyrefdist{HOL-Real_Asymp}{Lazy_Eval}
+
+When designing a specification, it is advantageous to stay within the executable fragment of HOL.
+Many Isabelle tools aimed at developer productivity work better (or only work) in such cases.
+The prime example is \holcommand{quickcheck}~\cite{bulwahn2012quickcheck}\holcommandindex{quickcheck}, which is able to uncover flaws in theorem statements by running an automated counterexample finder.
+This saves a lot of time by preventing one from trying to prove false statements.
+Consequently, in many parts of this thesis, I made design decisions supporting these tools (for example in §\ref{sec:background:cakeml}), even though at times it complicates the specifications.
+
+\section{Inductive predicates}
+\label{sec:background:inductive}
+
+\begin{code}
+  \begin{subcode}[b]{.49\linewidth}
+    \[
+      \inferrule*{ }{\holconst{even}\;0} \qquad
+      \inferrule*{\holconst{even}\;n}{\holconst{even}\;(n + 2)}
+    \]
+    \caption{Mathematical characterization}
+  \end{subcode}\hfill
+  \begin{subcode}[b]{.49\linewidth}
+    \begin{lstlisting}
+inductive even :: nat $\Rightarrow$ bool where
+even $0$ |
+even //n// $\implies$ even (//n// + $2$)\end{lstlisting}
+    \caption{Isabelle notation}
+  \end{subcode}
+  \vspace{1em}
+
+  \begin{subcode}{\linewidth}
+    \[
+      \inferrule*{
+        \holconst{even}\;x \\
+        P\;0\\
+        (\forall n.\; \holconst{even}\;n \implies P\;n \implies P\;(\holconst{Suc}\;n))
+      }{P\;x}
+    \]
+    \caption{Induction principle}
+  \end{subcode}
+
+  \caption{A simple inductively defined predicate}
+  \label{code:background:inductive}
+\end{code}
+
+Both in formal and informal mathematics, the notion of \emph{inductively defined,} or \emph{inductive predicates}\index{predicate, inductive} is pervasive.
+Winskel~\cite{winskel1993semantics} gives a comprehensive introduction into their mathematical background.
+Parts of this will be revisited in later chapters, notably well-founded induction.
+
+\cref{code:background:inductive} presents a simple inductive characterization of even numbers.
+The two rules declare that $0$ is even, and if $n$ is even, so is $n+2$.
+The result of this abstract specification is the smallest predicate $\holtypejudgement{\holconst{even}}{\holtype{nat}\Rightarrow\holconst{bool}}$ satisfying the given rules, i.e., the \emph{least fixed point}.
+Literature commonly uses inductive sets instead of predicates; however, the types $\alpha\;\holconst{set}$ and $\alpha\Rightarrow\holconst{bool}$ are isomorphic to each other.
+
+\remark*{
+  In Isabelle post-2012 versions, sets and predicates are distinct types and many libraries are duplicated for both.
+  In this formalization, predicates are preferred, unless finitary constraints need to be enforced.
+}
+
+\noindent
+In Isabelle, the \holcommand{inductive}\holcommandindex{inductive} package can be used to introduce inductive predicates.
+The \holcommand{inductive} command automates the internal construction of a least fixed-point based on the given rules, which are referred to as \emph{introduction rules}\index{introduction rule}.
+Conversely, there are also \emph{elimination rules}\index{elimination rule}.
+They can be used to prove properties like $\holconst{even}\;(n + 2) \implies \holconst{even}\;n$.
+
+The command also generates an induction schema.
+In the \holconst{even} example, it can be used to prove properties of the form $\holconst{even}\;n \implies P\;n$ for arbitrary $P$.
+This is usually referred to as \keyword{rule induction}.
+
+Inductively defined predicates are the most important ingredient for defining semantics.
+Nipkow and Klein~\cite[§4.5]{nipkow2014semantics} give further explanations of how those work in Isabelle.
+In fact, the example in \cref{code:background:inductive} is taken from their book.
+
+Semantics for non-trivial languages, including CakeML, are not purely specified as inductive predicates.
+Frequently, they are based on \emph{semantic functions}\index{semantic function} which are used to carry out substitution, matching, and other fundamental operations.
+
+Inductive predicates are convenient to use because contrary to function definitions, users need not care about termination.
+For example, one can define a big-step semantics for a programming language that admits non-terminating programs.
+It is not possible to define this in an equational way without additional tricks~\cite{owens2016functional,spector2018haskell}.
+
+\remark*{
+  There are still constraints on the kinds of rules that can constitute a least-fixed point, but these can often be automatically discharged by the \holcommand{inductive} package.
+  When higher-order predicates are involved (for example $\holtypejudgement{\holconst{pred}_{\holtype{list}}}{(\alpha \Rightarrow \holtype{bool}) \Rightarrow \alpha\;\holtype{list} \Rightarrow \holtype{bool}}$), monotonicity has to be proved by the user first.
+}
+
+\noindent
+The obvious downside resulting from that convenience is that inductive predicates are by default not executable (§\ref{sec:background:code}).
+Berghofer \etal~\cite{berghofer2009inductive} have introduced a \emph{predicate compiler} which can transform a large fragment of inductive specifications into executable code.
+While it works mostly automatically, it is tricky to use and has several edge cases; as such, I consider it to be a feature of last resort and prefer equational definitions where possible.
+
+\remark*{
+  In the \holconst{even} example, the predicate compiler produces code equations that terminate for even numbers -- correctly answering \holconst{True} -- but fail to terminate for odd numbers.
+  The reason is that the compiler does not know that the search for an $n'$ such that $n = n' + 2$ is bounded.
+}
+
+\noindent
+The categorical dual, \emph{coinductive} predicates\index{predicate, coinductive}, are only needed at single point in the formalization (\cref{code:intermediate:ml:corr}).
+Because of their only brief appearance, an explanation of coinduction is out of the scope for this thesis.
+I refer the reader to the literature for more details \cite{sangiorgi2011coinduction,gordon1995coinduction}.
+
+\section{Term rewriting}
+\label{sec:background:rewriting}
+
+\begin{code}
+  \begin{subcode}{.3\linewidth}
+    \begin{lstlisting}[language=Isabelle]
+datatype term =
+  Const string |
+  Free string |
+  Abs term |
+  Bound nat |
+  App term term
+    \end{lstlisting}
+    \caption{Abstract syntax of de~Bruijn terms}
+    \label{code:background:rewriting:term}
+  \end{subcode}
+  \begin{subcode}{.7\linewidth}
+    \[
+      \inferrule*[left=Step]{(\mathit{lhs}, \mathit{rhs}) \in \R \\ \holconst{match}\;\mathit{lhs}\;t = \holconst{Some}\;\sigma}{\rewrite{\R}{t}{\holconst{subst}\;\sigma\;\mathit{rhs}}}
+    \]
+    \[
+      \inferrule*[left=Beta]{ }{\rewrite{\R}{\app{(\Lambda t)}{t'}}{t[t']}} \quad
+      \inferrule*[left=Fun]{\rewrite{\R}{t}{t'}}{\rewrite{\R}{\app t u}{\app{t'}{u}}}
+    \]
+    \[
+      \inferrule*[left=Arg]{\rewrite{\R}{u}{u'}}{\rewrite{\R}{\app t u}{\app{t}{u'}}}
+    \]
+    \caption{Small-step semantics}
+    \label{code:background:rewriting:semantics}
+  \end{subcode}
+  \caption{Overview of the deeply embedded de Bruijn \holtype{term} type}
+\end{code}
+
+\noindent
+Based on the internal definition of terms in Isabelle/Pure, one can model terms as a datatype in HOL: the \emph{deeply embedded term language} is depicted in~\cref{code:background:rewriting:term}.
+Similarly to the Pure type, it uses \emph{de~Bruijn indices}~\cite{debruijn1972lambda}\index{de Bruijn index}, but omits types and schematic variables.
+
+The embedded HOL \holtype{term}\holtypeindex{term} type uses the same conventions as its ML counterpart.\holmlindex{term}
+I write $\holconst{App}\;t\;u$\holconstindex{App} as $\app t u$\index{\$@\$ (symbol)} and $\holconst{Abs}\;t$\holconstindex{Abs} as $\Lambda\;t$\index{$\Lambda$@$\Lambda$ (symbol)}.
+The notation $t [t']$ represents $\beta$-reduction\index{beta-reduction@$\beta$-reduction}, that is, substitution of the innermost bound variable (i.e.\ with index zero) in $t$ with $t'$ (the implementation of $\beta$-reduction will be revisited in §\ref{sec:terms:types:term}).
+Throughout this thesis, I will use an upper-case $\Lambda$ to refer to the concrete syntax of abstraction in the embedded term language, whereas lower-case $\lambda$ is used for Pure abstractions.
+More details on this and other term types can be found in §\ref{sec:terms}.
+
+Observe that types are not preserved in this embedded language.
+In Pure, the \holconst{Const}\holmlindex{Const}, \holconst{Free}\holmlindex{Free}, and \holconst{Abs}\holmlindex{Free} constructors carry type information, each for a different purpose:
+constants can be polymorphic (the type specifies the instantiation of the type scheme), free variables are identified by their name and their type (there may be multiple variables with the same name but different types), and finally, abstractions specify the type of the bound variable.
+
+\remark*{
+  While type checking admits multiple variables with the same name and differing types, it rarely happens in practice because type inference rejects such terms.
+  If a user was to feed, for example, the term $x\cons x$ into Isabelle (where $\cons$ is list cons)\index{\#@$\cons$ (symbol)}, type inference would report a unification failure, because $\alpha$ and $\alpha\;\holtype{list}$ cannot be unified.
+  Consequently, it is no real restriction that the model presented here does not handle such odd terms.
+}
+
+\noindent
+For abstractions, type erasure is unproblematic, because they are assumed to be parametric; i.e., for a polymorphic parameter, they may not behave differently depending on the concrete instantiation.
+However, it becomes impossible to distinguish between different instantiations of constants.
+This is problematic because of overloading (§\ref{sec:background:types}).
+I employ the so-called dictionary construction (§\ref{sec:preproc:dict}) to avoid this problem.
+
+\cref{code:background:rewriting:semantics} specifies the small-step semantics for terms.
+It is reminiscent of \emph{higher-order term rewriting}, and modelled closely after equality in HOL.
+The basic idea is that if the proposition $t = u$ can be proved equationally in HOL (without symmetry), then $\rewrite*\R{\embed t}{\embed u}$ holds, where \R\ contains all defining equations.
+The angle brackets denote the deep-embedding operator that will be explained in more detail in §\ref{sec:deep}.
+
+In the semantic for terms with de Bruijn indices, substitution under binders, i.e., rewriting below an abstraction, can be easily implemented: there are no bound variable names that could capture free variables of the term that is substituted.
+Still, the semantics in \cref{code:background:rewriting:semantics} does not recurse below binders; only below application.
+The reason for that is twofold:
+\begin{enumerate}
+  \item during the process of the compiler, new term types are introduced that carry explicit bound variable names (§\ref{sec:terms:types}), and
+  \item in the CakeML semantics, substitution does not happen below binders (§\ref{sec:intermediate:cakeml}).
+\end{enumerate}
+
+\noindent
+This model of term rewriting in HOL coincides by design with the notion of executability.
+All defining equations can be lifted into the set \R, which will then be transformed in later stages of the compiler.
+
+\section{CakeML/Isabelle integration}
+\label{sec:background:cakeml}
+
+Because the Lem specification of CakeML assumes some special features of HOL4, some adaptations were necessary:
+\begin{itemize}
+  \item
+    Fabian Immler and Johannes Åman Pohjola have contributed to the adaptation of machine words and floating-point arithmetic.
+  \item
+    Pohjola has contributed the s-expression printer that converts CakeML programs into string form, which can subsequently be consumed by the CakeML compiler.
+  \item
+    The functional big step semantics is implemented using a special function to enforce monotonically decreasing clocks according to Kumar and Myreen \cite[§3.2]{kumar2018clocked}.\thyrefafp{CakeML}{Evaluate_Clock}
+    This makes the termination proof simpler, but complicates reasoning about the semantics.\thyrefafp{CakeML}{Big_Step_Fun_Equiv}
+    Proofs from HOL4 that rephrase the semantics without that function had to be ported to be Isabelle.
+    Additionally, the equivalence proofs between big step and functional big step semantics were ported.
+  \item
+    In general, Isabelle tools and automation work better with nested recursive definitions instead of mutually recursive definitions.\thyrefafp{CakeML}{Evaluate_Single}
+    Additionally, my formalization ignores certain features of CakeML; notably mutable cells, modules, and literals.
+    Consequently, I have derived a smaller, executable version of the original CakeML semantics, together with an equivalence proof, called \emph{CupCakeML} (§\ref{sec:intermediate:cakeml}).\thyrefmy{CakeML_Extras}{CupCake_Semantics}
+    Portions of this have been implemented by Yu Zhang.
+  \item
+    Where necessary, I have set up code equations and \holcommand{quickcheck} for more rapid development of theories.\thyrefafp*{CakeML}{CakeML_Quickcheck}
+    In general, the functional big step semantics is better suited for executability than the relational variant, because it is defined as a \holcommand{function}.
+\end{itemize}
+
+\noindent In order to obtain a full toolchain from Isabelle definitions to machine code, I have implemented a small pretty-printer of the CupCakeML fragment to concrete CakeML syntax, which is part of the trusted code base.\thyrefafp*{CakeML}{CakeML_Compiler}
+The resulting source text can then be fed into the CakeML compiler.

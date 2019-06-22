@@ -1,0 +1,14 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Related work}
+
+Fallenstein and Kumar~\cite{fallenstein2015reflection} have presented a model of HOL inside HOL including a reflection proof principle.
+The principle states that for any proposition $\varphi$, if the syntactic encoding of $\varphi$ is provable, then $\varphi$ holds.
+This covers the entirety of of higher-order logic and requires the existence of a large cardinal.
+The work has been carried out in HOL4.
+In this thesis, I restrict myself to only the term-rewriting fragment of higher-order logic, meaning that the full generality of the reflection principle is not required.
+
+Kunčar and Popescu~\cite{kuncar2018consistent,kuncar2018types} introduce a mechanism to turn statements on types into statements on sets, exploiting the common set-theory-based semantics of higher-order logic.
+They perform a low-level dictionary construction using an extension of the logic.
+In this work, no extension is required; instead, derived constants are re-defined through the \holcommand{function} package (§\ref{sec:preproc:dict}).

@@ -1,0 +1,163 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Sequentialization}
+\label{sec:intermediate:seq}
+
+\authorship{
+  Some proofs in this section have been contributed by Yu Zhang.
+}
+
+\begin{code}[t]
+  \[
+    \inferrule*[left=Step]{(\mathit{name}, \mathit{rhs}) \in \rs}{\rewrite{\rs}{\holconst{Sconst}\;\mathit{name}}{\mathit{rhs}}}
+    \quad
+    \inferrule*[left=Beta]{\holconst{find\_match}\;\cs\;t = \holconst{Some}\;(\sigma, \mathit{rhs})}{\rewrite{\rs}{\app{(\Lambda\; \cs)}{t}}{\holconst{subst}\;\sigma\;\mathit{rhs}}}
+  \]
+  \[
+    \inferrule*[left=Fun]{\rewrite{\rs}{t}{t'}}{\rewrite{\rs}{\app t u}{\app{t'}{u}}}
+    \quad
+    \inferrule*[left=Arg]{\rewrite{\rs}{u}{u'}}{\rewrite{\rs}{\app t u}{\app{t}{u'}}}
+  \]
+  \caption{Small-step semantics with ordered clauses}
+  \label{code:intermediate:seq}
+\end{code}
+
+\noindent
+The semantics of \holtype{pterm} and \holtype{sterm} (\cref{code:intermediate:seq}) differ only in rule \textsc{Beta}.
+Instead of any matching clause, the first matching clause in a case abstraction is picked.
+For technical reasons, the \textsc{Step} rule is phrased using an additional inductive relation in the formalization.
+Because the rule set is now a rule list, I use the naming convention $\rs$ instead of \R.
+
+For the correctness proof, the order of clauses does not matter:
+I only need to prove that a step taken in the sequential semantics can be reproduced in the unordered semantics.
+As long as no rules are dropped, this is trivially true.
+For that reason, the compiler can choose an arbitrary ordering.
+
+\remark*{
+  This semantics only sequentializes pattern matching:
+  Rewriting may still be non-deterministic because if there are multiple redexes in a term, either can be picked.
+}
+
+\subsection{Translations between \holtype{pterm} and \holtype{sterm}}
+
+\begin{code}[t]
+  \begin{lstlisting}[language=Isabelle]
+fun pterm_to_sterm :: pterm $\Rightarrow$ sterm where
+pterm_to_sterm (Pconst //name//) = Sconst //name//
+pterm_to_sterm (Pvar //name//) = Svar //name//
+pterm_to_sterm (//t// $\${}$ //u//) = pterm_to_sterm //t// $\${}$ pterm_to_sterm //u//
+pterm_to_sterm (Pabs //cs//) = Sabs (ordered_map {(//p//, pterm_to_sterm //t//) | (//p//, //t//) $\in$ //cs//})
+
+fun sterm_to_pterm :: sterm $\Rightarrow$ pterm where
+sterm_to_pterm (Sconst //name//) = Pconst //name//
+sterm_to_pterm (Svar //name//) = Pvar //name//
+sterm_to_pterm (t $\${}$ u) = sterm_to_pterm //t// $\${}$ sterm_to_pterm //u//
+sterm_to_pterm (Sabs //cs//) = Pabs (set (map ($\holconst{map}_\holtype{prod}$ id untranslate_sterm) //cs//))\end{lstlisting}\holconstindex{pterm\_to\_sterm}\holconstindex{sterm\_to\_pterm}
+  \caption{Translations between \holtype{pterm}s and \holtype{sterm}s}
+  \label{code:intermediate:seq:convert}
+\end{code}
+
+Similarly to §\ref{sec:intermediate:named:trans}, both directions are recursive functions on the structure of the input terms (\cref{code:intermediate:seq:convert}).
+However, no name context is required.
+For terms that contain no abstractions, both directions also coincide with \holconst{convert\_term}.
+
+I will first explain the technically more interesting conversion from \holtype{pterm} to \holtype{sterm}, as this requires imposing an ordering on the unordered set of clauses.
+For simplicity, I have chosen to use the lexicographic order on the patterns, i.e., \holtype{term}s.
+Then, the problem can be generalized to finding a function $((\holtypejudgement\alpha{\holclass{linorder}}) \times \beta)\;\holtype{set} \Rightarrow (\alpha \times \beta)\;\holtype{list}$.
+%
+\begin{lstlisting}[language=Isabelle]
+definition ordered_map :: ($\alpha$::linorder $\times$ $\beta$) set $\Rightarrow$ ($\alpha$ $\times$ $\beta$) list where
+ordered_map //S// = [
+  (//k//, the_elem {(//k'//, //v//) | (//k'//, //v//) $\in$ //S// $\wedge$ //k// = //k'//}) |
+  //k// $\leftarrow$ sorted_list_of_set {//k// | (//k//, //v//) $\in$ //S//})
+]
+\end{lstlisting}\holconstindex{ordered\_map}
+%
+\noindent
+The functions $\holtypejudgement{\holconst{the\_elem}}{\alpha\;\holtype{set} \Rightarrow \alpha}$ and $\holtypejudgement{\holconst{sorted\_list\_of\_set}}{\holtypejudgement\alpha{\holclass{linorder}}}\;\holtype{set} \Rightarrow \alpha\;\holtype{list}$ are defined in the Isabelle library and return the element of a singleton set and the sorted list of elements of a set.
+Using these functions, \holconst{ordered\_map} first produces an ordered list of keys, which are then associated with the values from the input set.
+
+Naturally, this requires that the input set is a set of pairs where the first elements are unique.
+This is guaranteed by a side condition (§\ref{sec:intermediate:wellformed}).
+Otherwise, the result is unspecified.
+%
+\begin{lemma}
+  For suitable $S$, $\holconst{set}\;(\holconst{ordered\_map}\;S) = S$.
+\end{lemma}
+%
+\noindent
+The opposite direction is much simpler and has already been explained in §\ref{sec:terms:types:sterm}.
+%
+\begin{corollary}
+  For wellformed $t$, $\holconst{sterm\_to\_pterm}\;(\holconst{pterm\_to\_sterm}\;t) = t$.
+\end{corollary}
+%
+\noindent
+The reverse property does not hold directly, because an \holtype{sterm} may contain non-ordered clause lists.
+This property would require some form of $\alpha$-equivalence that disregards ordering.
+
+Similarly to §\ref{sec:intermediate:named:trans}, I have used the translation functions to establish term correspondence.
+
+\begin{definition}\label{def:intermediate:seq:rel1}
+  A \holtype{pterm} $t$ is related to an \holtype{sterm} $u$ if $t = \holconst{sterm\_to\_pterm}\;u$.
+\end{definition}
+
+\begin{definition}\label{def:intermediate:seq:rel2}
+  An \holtype{sterm} $u$ is related to a \holtype{pterm} $t$ if $\holconst{pterm\_to\_sterm}\;t = u$.
+\end{definition}
+
+\begin{corollary}
+  \cref{def:intermediate:seq:rel1,def:intermediate:seq:rel2} are strong structural term relations (§\ref{sec:terms:algebra:thy:preds}).
+\end{corollary}
+
+\noindent
+Corresponding versions of \cref{thm:intermediate:named:subst} can also be proved for these relations.
+
+\subsection{Compilation, correctness, \& completeness}
+
+At the same time the terms are translated, the rules also have to be converted from type $(\holtype{string}\times \holtype{pterm})\;\holtype{set}$ to $(\holtype{string}\times \holtype{sterm})\;\holtype{list}$.
+Fortunately, the same \holconst{ordered\_map} function can be used for that, because \holtypejudgement{\holtype{string}}{\holclass{lexorder}}:
+%
+\begin{lstlisting}[language=Isabelle]
+definition compile :: (string $\times$ pterm) set $\Rightarrow$ (string $\times$ sterm) list where
+compile //R// = ordered_map {(//name//, pterm_to_sterm //t//) | (//name//, //t//) $\in$ //R//}
+\end{lstlisting}
+%
+\noindent
+This looks very similar to the \holconst{Pabs} case in \holconst{pterm\_to\_sterm} (\cref{code:intermediate:seq:convert}).
+
+\remark*{
+  Observe that the \holconst{ordered\_map} function is used twice in this section, but with different type instantiations.
+  This is the reason why this compiler phase and the proofs are not parametrized on the concrete sequentialization strategy, because locales in Isabelle do not allow polymorphic parameters.
+}
+
+\noindent
+Luckily, both the correctness and the completeness property of this phase are easily stated and proved:
+
+\begin{theorem}[Correctness]\label{thm:intermediate:seq:correctness}
+  \[
+    \inferrule*{
+      \rewrite{\holconst{compile}\;\R}{t}{u}
+    }{\rewrite\R{\holconst{sterm\_to\_pterm}\;t}{\holconst{sterm\_to\_pterm}\;u}}
+  \]
+\end{theorem}
+
+\begin{proof}
+  By rule induction on the new semantics (\cref{code:intermediate:seq}).
+  As described in the introduction, any step taken in the sequential semantics can trivially be taken in the unordered semantics too.
+\end{proof}
+
+\begin{theorem}[Completeness]\label{thm:intermediate:seq:completeness}
+  \[
+    \inferrule*{
+      \rewrite\R{t}{u}
+    }{\rewrite{\holconst{compile}\;\R}{\holconst{pterm\_to\_sterm}\;t}{\holconst{pterm\_to\_sterm}\;u}}
+  \]
+\end{theorem}
+
+\begin{proof}
+  By rule induction on the previous semantics (\cref{code:intermediate:elim:explicit}).
+  The challenge here lies within the \textsc{Beta} case, where it needs to be proved that the arbitrary step taken by the previous semantics also corresponds to the first matching clause in the ordered term.
+  But this is guaranteed by \cref{thm:terms:algebra:thy:find-match-compat}.
+\end{proof}

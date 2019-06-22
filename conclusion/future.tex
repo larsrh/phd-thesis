@@ -1,0 +1,76 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Future work}
+
+\paragraph{Dictionary construction}
+Currently, there are heuristics for both termination and specifiedness of functions.
+Neither of them allow customization.
+For the former, allowing users to carry out manual proofs is a technical, but not theoretical, challenge.
+The latter admits some basic tuning by providing different congruence rules.
+It is an interesting research question how far the detection of specifiedness can be automated without these congruence rules.
+The most difficult challenge is posed by functions that are polymorphic in the return type, i.e.\ where type variables can be instantiated with functions that may influence the specifiedness of a returned function.
+
+\paragraph{CakeML integration}
+\emph{OpenTheory} is an exchange format between different provers in the HOL family~\cite{hurd2011opentheory}.
+It is relevant to this thesis in two ways:
+\begin{enumerate}
+  \item
+    Large parts of the CakeML formalization and proofs are not available in Lem; instead, they are implemented directly in HOL4.
+    An OpenTheory import tool could make this simpler and eliminate the need for Lem.
+    There is an existing import tool,\footnote{\url{https://github.com/xrchz/isabelle-opentheory}} but major technical obstacles prevent it from being used on large projects like CakeML.
+  \item
+    Presently, there is no export tool from Isabelle to OpenTheory because of various features that the Isabelle kernel supports, but that are not present in OpenTheory.
+    In the future, the dictionary construction (§\ref{sec:preproc:dict}) could play a role in implementing such a tool.
+\end{enumerate}
+
+\noindent
+OpenTheory could eventually be used to import the full CakeML formalization into Isabelle, avoiding the verification gap between the CakeML compiler proof and this work. Alternatively, it could be feasible to load HOL4 as an Isabelle application, providing its full kernel as a wrapper around the Isabelle/Pure logic.%
+\footnote{\url{https://web.archive.org/web/20190204170746/https://sourceforge.net/p/hol/mailman/message/36404016/}}
+It is not yet clear which is the more promising approach.
+
+\paragraph{Pattern compilation}
+As discussed in §\ref{sec:intermediate:elim:discussion}, there is an alternative compilation scheme of pattern occurring on the left-hand side of equations.
+Using that scheme means that the conflation of abstraction and matching in \holtype{pterm} and \holtype{sterm} could be removed.
+This would not required significant changes to the term algebra, but to the correctness proofs of all phases after \holtype{nterm}.
+
+\paragraph{Targetting machine types}
+While CakeML supports operations on machine types, e.g.\ words, my compilation toolchain never emits such operations (§\ref{sec:intermediate:cakeml:cupcake}).
+The reason is simple: the intermediate term types have no notion of machine types, just terms and values composed out of datatype constructors and abstractions.
+There are two ways to fix this:
+
+\begin{enumerate}
+  \item Keep the intermediate types as they are and implement a heuristic in the final phase that detects machine operations.
+  \item Introduce a notion of machine values and operations into the intermediate term types.
+\end{enumerate}
+
+\noindent
+I estimate the implementation and verification effort for the first option to be much higher than for the second option.
+Therefore, I will briefly sketch the implementation approach for the second option.
+
+\begin{itemize}
+  \item
+    The intermediate term types have to be made polymorphic over a type variable $\mu$ that denotes the type of machine values.
+    This keeps the formalization abstract over the concrete set of types that are supported.
+    In the simplest case, this could be instantiated as $\mu = 32\;\holtype{word}$ for just 32-bit integers.
+  \item
+    A sublocale \holclass{machine\_term} must be added to the \holtype{term} class.
+    It needs to be a locale, because it deals with two type variables, where $\alpha$ is the term type and $\mu$ the machine type.
+    The locale provides extensions to the substitution axioms and translations to CakeML literals (\cref{code:intro:cakeml:literals}).
+    An open question is whether matching should be extended to allow native values in patterns.
+    If not, this must be removed in a suitable preprocessing step, for which there is precedent in Isabelle~\cite[§7.3]{haftmann2018code}.
+  \item
+    Machine operations are still modelled as constants.
+    Because they require special treatment, they must not have defining equations (similarly to constructors).
+    The \holconst{constructors} locale needs to be extended with a set of machine operations.
+  \item
+    The rewriting semantics need to be parametrized over an oracle that assigns meaning to machine operations applied to machine values.
+    For example, the term $\embed{3 + 5}$ where $3$ and $5$ are words cannot be evaluated using term rewriting.
+    The oracle would provide the arity of the $+$ operation and evaluate $3 + 5$ to $8$.
+  \item
+    The embedding phase needs to be made aware of native values and perform the deep embedding accordingly.
+    Some non-datatypes such as words can then be made instances of the \holclass{embed} class.
+  \item
+    The final compiler phase that emits CakeML code can then produce machine literals.
+    It's correctness would need be parametrized on the \holclass{native\_term} locale and the operations oracle.
+\end{itemize}

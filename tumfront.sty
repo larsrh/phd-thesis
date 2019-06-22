@@ -1,0 +1,107 @@
+\NeedsTeXFormat{LaTeX2e}[1999/12/01]
+\ProvidesPackage{tumfront}
+
+\RequirePackage[absolute]{textpos}
+\RequirePackage[normalem]{ulem}
+
+\definecolorset{RGB}{TUM}{}{%
+Black,   0,   0,   0;%
+Gray,   51,  51,  51;%
+White, 255, 255, 255;%
+Blue, 0, 101, 189;%
+Ivory,  218, 215, 203;%
+Orange, 227, 114,  34;%
+Green,  162, 173,   0%
+}
+\definecolorset{RGB}{TUMBlue}{}{%
+Darkest,    0,  51,  89;%
+Darker,     0,  82, 147;%
+Lighter,  100, 160, 200;%
+Lightest, 152, 198, 234%
+}
+
+% Left and right margins are exactly the same.
+\def\defaultwidth{150mm}%
+\def\defaulthpos{30mm}%
+
+% Vertical positions of title page entities
+\def\titlevpos{100.2mm}%
+\def\informationvpos{147mm}%
+\def\examinervpos{196.5mm}%
+\def\datevpos{241mm}%
+
+\def\TUMLogoWidth{19mm}
+\renewcommand\maketitle{%
+\begin{titlepage}
+    \begin{textblock*}{10.5mm}(9.75mm + 5mm, 8.8mm)
+      \noindent \includegraphics[height = 11.5mm]{img/intum.pdf}
+    \end{textblock*}
+
+    \begin{textblock*}{120mm}(10mm + 10mm + 5mm + 5mm, 13.78mm)
+        \footnotesize\sffamily
+        \noindent \textcolor{TUMBlue}{Fakultät für Informatik}\\
+        \textcolor{TUMBlue}{Technische Universität München}
+    \end{textblock*}
+
+    \begin{textblock*}{\TUMLogoWidth}(\paperwidth - \TUMLogoWidth - 10mm, 10mm)
+        \noindent \includegraphics[height = 10mm]{img/tum.pdf}
+    \end{textblock*}
+
+
+    \begin{textblock*}{\defaultwidth}[0,1](\defaulthpos, \titlevpos)
+        \centering
+
+        {\bfseries \Large \textcolor{TUMBlue}{\@title}}
+
+        \vspace{10mm}
+
+        {\bfseries \large \@author}\\
+
+    \end{textblock*}
+
+    \begin{textblock*}{\defaultwidth}(\defaulthpos, \informationvpos)
+        \centering
+        \raggedright
+
+        Vollst\"andiger Abdruck der von der Fakultät der Informatik der Technischen
+        Universit\"at M\"unchen zur Erlangung des akademischen Grades eines\\
+
+        \vspace{6mm}
+
+        \centering {\bfseries \large Doktors der Naturwissenschaften (Dr.\ rer.\ nat.)}\\
+
+        \vspace{6mm}
+        \raggedright
+
+        genehmigten Dissertation.\\
+
+    \end{textblock*}
+
+    \begin{textblock*}{\defaultwidth}(\defaulthpos, \examinervpos)
+        \centering
+        \raggedright
+
+        \textbf{Vorsitzender:}\\
+        \hspace{8mm}\hphantom{1. }Prof.\ Dr.\ Helmut Seidl
+
+        \vspace{2mm}
+
+        \textbf{Pr\"ufende der Dissertation:}\\
+        \hspace{8mm}1. Prof.\ Tobias Nipkow, PhD\\
+        \hspace{8mm}2. Magnus Myreen, PhD
+
+    \end{textblock*}
+
+    \begin{textblock*}{\defaultwidth}(\defaulthpos, \datevpos)
+        \raggedright
+
+        Die Dissertation wurde am 05.03.2019 bei der Technischen Universit\"at
+        M\"unchen eingereicht und durch die Fakultät für Informatik am \uline{\hspace{5em}} angenommen.
+    \end{textblock*}
+\end{titlepage}
+
+% force empty page
+\mbox{}
+\newpage
+\thispagestyle{empty}
+}

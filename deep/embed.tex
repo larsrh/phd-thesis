@@ -1,0 +1,137 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Embedding operation}
+\label{sec:deep:operation}
+
+The embedding operations lifts HOL definitions into the \holtype{term} type.
+I use angle brackets to denote an embedded term: \embed{t}\index{$\langle\rangle$@$\langle\rangle$ (symbol)}, where $t$ is an arbitrary HOL expression of any type and the result \embed{t} is a HOL value of type \holtype{term}.
+It is a purely syntactic transformation, without preliminary evaluation or reduction, and discards type information.
+The following examples illustrate the operation and its typographical conventions:
+%
+\begin{align*}
+  \embed{x} &= \holconst{Free}\;\texttt{"x"} \\
+  \embed{\holconst{f}} &= \holconst{Const}\;\texttt{"f"} \\
+  \embed{x\;\#\;\mathit{xs}} &= \app{\app{\holconst{Const}\;\texttt{"List.list.Cons"}}{\embed x}}{\embed{\mathit{xs}}} \\
+  \embed{\lambda x y.\; \holconst{f}\;y\;x} &= \Lambda\;(\Lambda\;(\app{\app{\embed{\holconst{f}}}{\holconst{Bound}\; 0}}{\holconst{Bound}\;1}))
+\end{align*}
+%
+\noindent
+Contrary to the formalization, I will use the \embed{t} notation in a more flexible way and allow it to also represent values of the other term types (§\ref{sec:terms:types}), e.g.\ \holconst{pterm}.
+
+The correspondence between an embedded term $t$ to a HOL term $a$ of type $\tau$ is expressed with the syntax $\evalr\R t a$.
+The relation can be described as ``using the rule set \R, the term $t$ can be rewritten to $\embed{a}$''.
+Most importantly, this means the correspondence relation is aware of the term-rewriting semantics of \holtype{term} (\cref{code:background:rewriting:semantics}), where \R\ is the set of all known defining equations.
+Furthermore, the notation $\evalr\R t a$ actually represents a family of relations.
+Abstractly, it is defined in the \holclass{embed} type class.
+
+Before the relations are discussed in detail in §\ref{sec:deep:rel}, I will show an example of the embedding operation and explain its implementation.
+
+\paragraph{Example}
+Consider the \holconst{map} function on lists:
+\[
+  \begin{array}{lllcl}
+    \holconst{map}&f&[] &=& [] \\
+    \holconst{map}&f&(x \cons \mathit{xs}) &=& f\;x \cons \holconst{map}\;f\;\mathit{xs}
+  \end{array}
+\]
+
+\noindent
+The result of embedding this function is a set of rules \holconst{map'}.
+If written directly by the user, it would look as follows:
+\begin{lstlisting}[basicstyle=\footnotesize\ttfamily,keywordstyle=\sffamily\bfseries\small\color{Blue}]
+definition map' :: (term $\times$ term) set where
+map' =
+  {(Const "List.list.map" $\$$ Free "f" $\$$ (Const "List.list.Cons" $\$$ Free "x" $\$$ Free "xs"),
+      Const "List.list.Cons" $\$$ (Free "f" $\$$ Free "x") $\$$ $\ldots$),
+   (Const "List.list.map" $\$$ Free "f" $\$$ Const "List.list.Nil",
+      Const "List.list.Nil")}
+\end{lstlisting}
+%
+Additionally, the theorem $\evalr{\holconst{map'}}{\holconst{Const}\;\texttt{"List.list.map"}}{\holconst{map}}$ is proved using a custom tactic (§\ref{sec:deep:proofs}).
+Constant names like \holconst{List.list.map} come from the fully qualified internal names in Isabelle.
+
+\begin{code}
+  \begin{lstlisting}[mathescape=false,language=ML]
+fun embed schematic t =
+  let
+    fun
+      aux (Const (n, _)) = @{term Const} $ HOLogic.mk_string n
+    | aux (Free (n, _)) =
+        if schematic then
+          error "free variables are not supported"
+        else
+          @{term Free} $ HOLogic.mk_string n
+    | aux (Bound i) = @{term Bound} $ HOLogic.mk_number @{typ nat} i
+    | aux (t $ u) = @{term App} $ aux t $ aux u
+    | aux (Abs (_, _, t)) = @{term Abs} $ aux t
+    | aux (Var ((n, i), _)) =
+        if schematic then
+          @{term Free} $ HOLogic.mk_string (n ^ "." ^ Value.print_int i)
+        else
+          error "schematic variables are not supported"
+  in aux t end
+  \end{lstlisting}
+  
+  \caption{Full implementation of the embedding operation on terms}
+  \label{code:deep:embed}
+\end{code}
+
+\paragraph{Implementation}
+\cref{code:deep:embed} shows the Isabelle/ML implementation of the embedding operation on terms.
+It lifts the Pure term constructors to their equivalents in the \holconst{term} type.
+
+Note that the \holconst{term} type only knows free variables, but no schematic variables.
+Depending on the context where this function is used, either schematic or free variables are mapped to free variables in \holconst{term}.
+
+This function can then be subsequently used to lift sets of equations.
+As illustrated by the example, the resulting type is $(\holtype{term} \times \holtype{term})\;\holtype{set}$: equations are split into left- and right-hand side (\cref{def:terms:algebra:thy:eq}).
+The set contains all transitive dependencies according to the code graph (§\ref{sec:preproc:dict:elim:impl}).
+
+Because the set of embedded defining equations is now subject to a term-rewriting semantics, I will refer to it as a rule set\index{rule set} (§\ref{sec:terms:algebra:thy:matching}).
+
+\begin{code}[t]
+  \begin{lstlisting}
+type_synonym c_info = nat $\times$ string
+
+locale constructors =
+  fixes C_info :: string $\holmap$ c_info
+begin
+
+definition C :: string set where
+C = dom //C_info//
+
+end
+
+locale constants = constructors +
+  fixes heads :: string set
+  assumes heads $\cap$ C = $\emptyset$
+begin
+
+definition all_consts :: string set where
+all_consts = heads $\cup$ C
+
+end\end{lstlisting}\holconstindex{C}\holconstindex{C\_info}\holconstindex{heads}\holconstindex{all\_consts}
+  \caption{Definitions of the \holconst{constructors} and \holconst{constants} locales}
+  \label{code:deep:constructors}
+\end{code}
+
+Observe that both constructor names (e.g.\ \holconst{Cons}) and function names (e.g.\ \holconst{map}) look the same in this representation.
+But just like in the dictionary construction (§\ref{sec:preproc:dict}), they require different treatment in some phases of the compiler.
+For that reason, the deep embedding also produces a set of constructor names, which is a subset of all constants that occur.
+This is a captured in the \holconst{constructors} locale (\cref{code:deep:constructors}).
+The constructor information consists of name, arity, and name of the type that it belongs to.
+
+Additionally, there is also a locale that fixes a rule set and assumes some wellformedness conditions (§\ref{sec:intermediate:wellformed}).
+It is a sublocale of \holconst{constants}, which ensures that there are no constants that are both constructors and head of a defining equation.
+More broadly speaking, the embedding operation does not just define a set of equations, but declares an interpretation of the locale and proves all conditions.
+Ill-formed rule sets would be flagged at this point.
+
+\remark*{
+  Deep embedding -- being a purely syntactic operation -- does not respect \emph{referential transparency} \cite{sep2017quotation,quine1960word}.
+  In particular, constants' names become part of the embedded definition.
+  As an example, consider the two functions $\holconst{id}_1\;x = x$ and $\holconst{id}_2\;x = x$.
+  Both can be proved to be equal according to HOL's extensional function equality.
+  However, their deep embeddings differ from each other.
+  For practical purposes, this bears little relevance, because users of the compiler would not routinely alter either the embedding or the generated theorems.
+}

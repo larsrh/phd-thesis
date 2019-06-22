@@ -1,0 +1,54 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Composition}
+
+After having described the complete compiler pipeline in the previous sections, I will give a high-level overview of how all phases fit together here.
+
+The actual compiler can be characterized with two functions.
+Firstly, the translation of \holtype{term} to \holtype{Cake.exp} is a simple composition of each term translation function:
+%
+\begin{lstlisting}[language=Isabelle]
+definition term_to_cake :: term $\Rightarrow$ Cake.exp where
+term_to_cake = sterm_to_cake $\circ$ pterm_to_sterm $\circ$ nterm_to_pterm $\circ$ term_to_nterm
+\end{lstlisting}
+%
+Secondly, the function that translates function definitions by composing the phases as outlined in \cref{fig:intermediate}, including iterated application of pattern elimination:
+\begin{lstlisting}[language=Isabelle]
+definition compile :: (term $\times$ term) set $\Rightarrow$ Cake.dec where
+compile = Cake.Dletrec $\circ$ compile_srules_to_cake $\circ$ compile_prules_to_srules $\circ$
+  compile_irules_to_srules $\circ$ compile_irules_iter $\circ$ compile_crules_to_irules $\circ$
+  consts_of $\circ$ compile_rules_to_nrules
+\end{lstlisting}
+Each function \holconst{compile\_}* corresponds to one compiler phase;
+the remaining functions are trivial.
+
+This produces a CakeML top-level declaration.
+I prove that evaluating this declaration in the top-level semantics (\holconst{evaluate\_prog}) results in an environment \holconst{cake\_sem\_env}.
+But \holconst{cake\_sem\_env} can also be computed via another instance of the global clause set trick~(§\ref{sec:intermediate:value:sublocale}).
+
+Correctness is justified for each phase between intermediate semantics and correspondence relations, most of which are rather technical.
+Whereas the compiler may be complex and impenetrable, the trustworthiness of the constructions hinges on the obviousness of those correspondence relations.
+
+Fortunately, under the assumption that terms to be evaluated and the resulting values do not contain abstractions -- or closures, respectively -- all of the correspondence relations collapse to simple structural equality.
+
+Equipped with these functions and relations, I can state the final correctness theorem:
+%
+\begin{lstlisting}[language=Isabelle]
+theorem compiled_correct:
+  (* If CakeML evaluation of a term succeeds ... *)
+  assumes evaluate False cake_sem_env //s// (term_to_cake //t//) (//s'//, Rval //v//)
+  (* ... producing a constructor term without closures ... *)
+  assumes cake_no_abs //v//
+  (* ... and some syntactic properties of the involved terms hold ... *)
+  assumes closed t and $\neg$ shadows_consts //t// and welldefined //t// and wellformed //t//
+  (* ... then this evaluation can be reproduced in the term-rewriting semantics *)
+  shows //rs// $\vdash$ //t// $\rightarrow^*$ cake_to_term //v//
+\end{lstlisting}
+
+\noindent
+This theorem directly relates the evaluation of a term $t$ in the full CakeML (including mutability and exceptions) to the evaluation in the initial higher-order term rewriting semantics.
+The evaluation of $t$ happens using the environment produced from the initial rule set.
+Hence, the theorem can be interpreted as the correctness of the pseudo-ML expression $\holkeyword{let\ rec}\;\rs\;\holkeyword{in}\;t$.
+
+Observe that in the assumption, the conversion goes from my terms to CakeML expressions, whereas in the conclusion, the conversion goes the opposite direction.

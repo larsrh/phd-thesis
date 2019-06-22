@@ -1,0 +1,141 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+% !TeX program = lualatex
+
+\documentclass{thesis}
+
+\bibliography{report}
+
+\title{Verified Code Generation from Isabelle/HOL}
+\author{Lars Hupel}
+
+\begin{document}
+
+\thispagestyle{empty}
+\maketitle
+\newpage
+
+\cleardoubleoddemptypage
+
+\input{frontmatter/abstract}
+
+\cleardoubleoddemptypage
+
+\input{frontmatter/ack}
+
+\cleardoubleoddemptypage
+
+\tableofcontents
+
+\cleardoubleoddemptypage
+
+\setchapterpreamble{\dictum[Raf Kolanski]{It's called CakeML 'cause it's f**king sweet, mate!}}
+
+\chapter{Introduction}
+
+\label{sec:overview}
+\vspace{1em}
+\input{intro}
+\input{intro/isabelle}
+\input{intro/cakeml}
+\input{intro/motivation}
+\input{intro/contributions}
+\input{intro/structure}
+\input{intro/howto}
+
+\setchapterpreamble{\dictum[Jean Chrétien]{A proof is a proof.\\
+What kind of a proof?\\
+It's a proof.\\
+A proof is a proof,\\
+and when you have a good proof,\\
+it's because it's proven.}}
+
+\chapter{Background}
+
+\label{sec:background}
+\vspace{1em}
+\input{background}
+
+\setchapterpreamble{\dictum[Old Isabelle proverb]{
+  Axiomatic type classes are definitional.\\
+  Type definitions are axiomatic.
+}}
+
+\chapter{Preprocessing definitions}
+\minitoc
+
+\label{sec:preproc}
+\input{preproc}
+\input{preproc/dict}
+\input{preproc/lazy}
+\input{preproc/constructors}
+\input{preproc/compatibility}
+\input{preproc/limitations}
+
+\setchapterpreamble{\dictum[Every business, ever.]{
+  Terms and conditions apply.
+}}
+
+\chapter{Terms, patterns, and values}
+\minitoc
+
+\label{sec:terms}
+\input{terms}
+\input{terms/preliminaries}
+\input{terms/algebra}
+\input{terms/types}
+\input{terms/related}
+\input{terms/conclusion}
+
+\setchapterpreamble{\dictum[Pat Paulsen]{
+  Deep down, I happen to be very shallow.
+}}
+
+\chapter{Deep embedding of terms}
+
+\label{sec:deep}
+\vspace{1em}
+\input{deep}
+\input{deep/embed}
+\input{deep/relation}
+\input{deep/proof}
+\input{deep/related}
+
+\setchapterpreamble{\dictum[Lewis Carroll, \emph{The Walrus and The Carpenter}]{
+``The time has come'', the Walrus said,\\
+``To talk of many things''
+}}
+
+\chapter{Compiling HOL terms to CakeML expressions}
+\minitoc
+
+\label{sec:compiler}
+\input{compiler}
+\input{compiler/side}
+\input{compiler/named}
+\input{compiler/patterns}
+\input{compiler/seq}
+\input{compiler/bigstep}
+\input{compiler/value}
+\input{compiler/ml}
+\input{compiler/cakeml}
+\input{compiler/composition}
+\input{compiler/related}
+
+\chapter{Conclusion}
+
+\label{sec:conclusion}
+\input{conclusion}
+\input{conclusion/evaluation}
+\input{conclusion/future}
+
+\clearpage
+
+\nocite{*}
+\printbibliography
+
+\clearpage
+
+\printindex
+
+\end{document}

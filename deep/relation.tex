@@ -1,0 +1,104 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Embedding relations}
+\label{sec:deep:rel}
+
+\begin{code}
+	\begin{lstlisting}[language=Isabelle]
+class embed =
+  fixes embed :: (term $\times$ term) set $\Rightarrow$ term $\Rightarrow$ $\alpha$ $\Rightarrow$ bool (_ $\vdash$ _ $\approx$ _)
+  assumes //R// $\vdash$ //t// $\approx$ //a// $\implies$ wellformed //t//
+begin
+	
+definition embed' :: (term $\times$ term) set $\Rightarrow$ term $\Rightarrow$ $\alpha$ $\Rightarrow$ bool (_ $\vdash$ _ $\downarrow$ _) where
+//R// $\vdash$ //t// $\downarrow$ //a// $\biimplies$ wellformed //t// $\wedge$ ($\exists$ $t'$. //R// $\vdash$ //t// $\longrightarrow^*$ $t'$ $\wedge$ //R// $\vdash$ $t'$ $\approx$ //a//)
+	
+end
+	\end{lstlisting}
+	\caption{\holconst{embed} class}
+	\label{code:deep:class}
+\end{code}
+
+The \holclass{embed} type class (\cref{code:deep:class}) introduces two distinct relations: $\approx$ \emph{(ground embedding)}\index{embedding, ground} and $\downarrow$ \emph{(equational embedding)}\index{embedding, equational}.
+The latter has already been briefly introduced in the previous section.
+To make the type explicit, both relations can be indexed: $\approx_\tau$ and $\downarrow_\tau$.
+Both also use the same syntax: An embedded term corresponds to a HOL term $a$ of type $\tau$ with respect to a rule set $\R$ is written as $\eval\R t a$ or $\evalr\R t a$.
+However, both differ in the sets of terms $t$ that correspond to $a$.
+
+\remark*{
+  The definitions for $\downarrow$ and $\approx$ are part of the trusted base, i.e., one needs to be confident in them in order to be confident of the main theorems.
+}
+
+\paragraph{Ground embedding}\index{embedding, ground}
+For ground types, an embedding relation can be defined easily.
+For example, the following two rules define $\approx_{\holtype{nat}}$:
+\[
+  \inferrule*
+    { }
+    {\eval[\holtype{nat}]{\R}{\embed{\holconst{Groups.zero\_class.zero}}}{0}}
+  \qquad
+  \inferrule*
+    {\eval[\holtype{nat}]{\R}{\embed t}{n}}
+    {\eval[\holtype{nat}]{\R}{\embed{\holconst{Nat.Suc}\;t}}{\holconst{Suc}\;n}}
+\]
+
+\noindent
+Definitions of $\approx$ for arbitrary data types without nested recursion can be derived mechanically in the same fashion as for \holtype{nat}, where they constitute one-to-one relations.
+Every datatype is defined by a set of constructors:
+\[
+  (\alpha_1, \ldots, \alpha_n) \;\tau = \holconst{C}_1\;\kappa_{1,1}\;\ldots\;\kappa_{1,n_1} \mid \cdots \mid \holconst{C}_k\;\kappa_{1,k}\;\ldots\;\kappa_{1,n_k}
+\]
+Consequently, the predicate
+\[
+  \holtypejudgement{\approx_\tau}{(\holtype{term} \times \holtype{term})\;\holtype{set} \Rightarrow \holtype{term} \Rightarrow (\holtypejudgement{\alpha_1}{\holclass{embed}}, \ldots, \holtypejudgement{\alpha_n}{\holclass{embed}}) \;\tau \Rightarrow \holtype{bool}}
+\]
+is defined with one rule per constructor:
+\[
+  \inferrule*{
+   	\eval\R{t_1}{x_1} \\
+   	\cdots \\
+   	\eval\R{t_{n_i}}{x_{n_i}}
+  }{
+   	\eval[\tau]\R{\app{\app{\app{\embed{\holconst{C}_i}}{t_1}}{\ldots}}{t_{n_i}}}{\holconst{C}_i\;x_1\;\ldots\;x_{n_i}}
+  }
+\]
+%
+Proving the axiom of the type class is trivial, because it only requires wellformedness of \holtype{term}s.
+A \holtype{term} is wellformed if there are no dangling de~Bruijn indices.
+In this case, no bound variables occur in the definition of $\approx_\tau$.
+
+An implementation restriction is that currently, nested recursion is not supported.
+Instead, such datatypes must be expressed with mutual recursion~\cite{gunter1992datatype}, which is supported by the current \holcommand{datatype} command~\cite[§2]{blanchette2014datatypes}.
+
+Note that for such types, $\approx$ ignores \R, because no rewriting happens.
+The reason why $\approx$ must be parametrized on $\R$ will become clear in a moment.
+
+For function types, I follow Myreen and Owen's approach \cite{myreen2014translation}.
+The statement $\eval\R t f$ can be interpreted as ``$\app{t}{\embed{a}}$ can be rewritten to $\embed{f\;a}$''.
+Because this might involve applying a function definition from $\R$ and beta reduction, the $\approx$ relation must be indexed by the rule set.
+This is where equational embedding comes into play.
+
+\paragraph{Equational embedding}\index{embedding, equational}
+The equational embedding relation $\evalr\R t x$ is defined to mean that there is a $t'$ such that $t$ can be rewritten to $t'$ in $\R$ where $\eval\R{t'}x$.
+This is apparent in the formalization (\cref{code:deep:class}).
+Formally:
+\[ \evalr\R t a \biimplies \holconst{wellformed}\;t \wedge (\exists t'.\; \rewrite*\R t t' \wedge \eval R{t'}a) \]
+
+\noindent
+Equipped with this, it becomes possible to define $\approx$ for function types:
+
+\[
+  \inferrule*{
+    \holconst{wellformed}\;t \\
+    \forall\;x\;u.\; \evalr[\tau_1]\R{u}{x} \implies \evalr[\tau_2]\R{\app{t}{u}}{f\;x}
+  }{
+    \eval[\tau_1 \Rightarrow \tau_2]\R{t}{f}
+  }
+\]
+
+\noindent This definition is easily motivated:
+Embedding a constant \holconst{f} yields a rule set $\R$, containing rewrite rules for \holconst{f} and all other required constants.
+The embedding routine will produce the theorem $\eval\R{\embed{\holconst{f}}}{\holconst{f}}$.
+After applying extensionality, one still needs to apply the rewrite rules to obtain the corresponding function values.
+Note that $\embed{\holconst{f}}$ itself, without being applied to parameters, cannot be rewritten.

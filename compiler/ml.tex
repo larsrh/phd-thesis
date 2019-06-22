@@ -1,0 +1,230 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Evaluation with recursive closures}
+\label{sec:intermediate:ml}
+
+\begin{code}[t]
+  \[
+    \inferrule*[left=Const]{\mathit{name} \notin \C \\ \sigma\;\mathit{name} = \holconst{Some}\;v}{\seval*{\sigma}{\holconst{Sconst}\;\mathit{name}}{v}}
+  \]
+  \[
+    \inferrule*[left=Var]{\sigma\;\mathit{name} = \holconst{Some}\;v}{\seval*{\sigma}{\holconst{Svar}\;\mathit{name}}{v}} \quad
+    \inferrule*[left=Abs]{ }{\seval*\sigma{\Lambda\;\cs}{\holconst{Vabs}\;\cs\;\sigma}}
+  \]
+  \[
+    \inferrule*[left=Comb]{
+      \seval*\sigma{t}{\holconst{Vabs}\;\cs\;\sigma'} \\
+      \seval*\sigma{u}{v} \\
+      \holconst{find\_match}\;\cs\;v = \holconst{Some}\;(\sigma'', \mathit{rhs}) \\
+      \seval*{\envadd{\sigma'}{\sigma''}}{\mathit{rhs}}{v'}
+    }{\seval*\sigma{\app t u}{v'}}
+  \]
+  \[
+    \inferrule*[left=RecComb]{
+      \seval*\sigma{t}{\holconst{Vrecabs}\;\css\;\mathit{name}\;\sigma'} \\
+      \css\;\mathit{name} = \holconst{Some}\;\cs \\
+      \seval*\sigma{u}{v} \\
+      \holconst{find\_match}\;\cs\;v = \holconst{Some}\;(\sigma'', \mathit{rhs}) \\
+      \seval*{\envadd{\sigma'}{\envadd{\holconst{mk\_rec\_env}\;\mathit{css}\;\sigma'}{\sigma''}}}{\mathit{rhs}}{v'}
+    }{\seval*\sigma{\app t u}{v'}}
+  \]
+  \[
+    \inferrule*[left=Constr]{
+      \mathit{name} \in \C \\
+      \seval*\sigma{t_1}{v_1} \\
+      \cdots \\
+      \seval*\sigma{t_n}{v_n}
+    }{\seval*\sigma{\holconst{Sconst}\;\mathit{name}\mathbin\$t_1\mathbin\$\ldots\mathbin\$t_n}{\holconst{Vconstr}\;\mathit{name}\;[v_1, \ldots, v_n]}}
+  \]
+
+  \[
+    \holconst{mk\_rec\_env}\;\mathit{css}\;\sigma = \holconst{map\_of}\;\{ \holconst{Vrecabs}\;\mathit{css}\;\mathit{name}\;\sigma \mid (\mathit{name}, \_) \in \mathit{css} \}
+  \]\holconstindex{mk\_rec\_env}
+  \caption{ML-style evaluation semantics}
+  \label{code:intermediate:ml}
+\end{code}
+
+CakeML distinguishes between non-recursive and recursive closures \cite{myreen2014translation}.
+This distinction is also present in the \holtype{value} type.
+In this step, I will close that gap by conflating variables with constants.
+This necessitates a special treatment of recursive closures.
+Therefore I introduce a new predicate $\seval*\sigma t v$ (\cref{code:intermediate:ml}) that -- in contrast to the previous semantics -- only has one environment.
+
+As usual, I will explain the rules that have changed significantly from the previous semantics here:
+\begin{semantics}
+  \item[Const/Var]
+    Constant definition and variable values are both retrieved from the same environment $\sigma$.
+    I have chosen to keep the distinction between constants and variables in the \holtype{sterm} type to avoid the introduction of another intermediate term type.
+    This gap will be closed in the final phase (§\ref{sec:intermediate:cakeml}).
+    For technical reasons, the \textsc{Const} case here now requires an additional check that it is a non-constructor constant, which was not required in the previous semantics.
+  \item[Abs]
+    Identical to the previous evaluation semantics.
+    Evaluation never creates recursive closures at run-time.
+    Anonymous functions, e.g.\ in the term $\embed{\holconst{map}\;(\lambda x.\;x)}$, are evaluated to non-recursive closures.
+    Combined with the fact that in my source language, the set of definitions is fixed before running the compiler, it follows that the evaluation semantics never needs to construct a hitherto unseen \holconst{Vrecabs} value: these are constructed by the compiler (§\ref{sec:intermediate:value:sublocale}).
+  \item[RecComb]
+    Almost identical to the evaluation semantics.
+    Additionally, for each function $(\mathit{name},\mathit{cs}) \in \css$, a new recursive closure $\holconst{Vrecabs}\;\css\;\mathit{name}\;\sigma'$ is constructed and inserted into the environment.
+    Observe that the $\mathit{cs}$ is ignored during construction, because it is contained in $\css$ itself.
+    This ensures that after the first call to a recursive function, the function itself is present in the environment to be called recursively, without having to introduce coinductive environments.
+    Still, some proofs require coinductive reasoning at a later point (\cref{thm:intermediate:ml}).
+    The strategy itself is similar to how it is implemented in the CakeML semantics.
+\end{semantics}
+
+\noindent
+By merging the rule set $\rs$ with the variable environment $\sigma$, it becomes necessary to discuss possible clashes.
+Previously, the syntactic distinction between \holconst{Svar} and \holconst{Sconst} meant that \embed{x} (the syntactic variable ``x'') and \embed{\holconst{x}} (the syntactic constant ``x'') are not ambiguous:
+all semantics up to the evaluation semantics clearly specify where to look for the substitute.
+This is not the case in functional languages where definitions and variables are not distinguished syntactically.
+
+Instead, I rely on the fact that the initial rule set only defines constants.
+All variables are introduced by matching before $\beta$-reduction (that is, in the \textsc{Comb} and \textsc{RecComb} rules).
+The \textsc{Abs} rule does not change the environment.
+Hence it suffices to assume that variables in patterns must not overlap with constant names, which is guaranteed by a side-condition (§\ref{sec:intermediate:wellformed}).
+
+The following lemma shows the direct correspondence between $\rs_\text{v}$ (§\ref{sec:intermediate:value:sublocale}) and $\holconst{mk\_rec\_env}$ (\cref{code:intermediate:ml}).
+%
+\begin{lemma}\label{thm:intermediate:value:rs-mk-rec-env}
+  $\holconst{map\_of}\;\rs_\text{v} = \holconst{mk\_rec\_env}\;\holconst{global\_css}\;[]$
+\end{lemma}
+%
+\noindent
+The proof is technical and requires no further assumptions about the rule set.
+
+\begin{lemma}[Extensionality]\label{thm:intermediate:ml:ext}
+  Evaluation is invariant under extensional equivalence (§\ref{sec:terms:types:value:ext}).
+\end{lemma}
+
+\paragraph{Example}
+Reusing the example from §\ref{sec:intermediate:value:sublocale}, I will demonstrate the evaluation of the term $\embed{\holconst{odd}\;(\holconst{Suc}\;0)}$.
+Since it is a closed term, there are no free variables that need to have a value.
+Let $\sigma = \rs_\text{v}$ from that example.
+
+\[
+  \inferrule*[Left=RecComb]{
+    \cdots \\
+    \inferrule*[left=\textdagger]{
+      \inferrule*[left=RecComb]{
+        \cdots \\
+        \inferrule*[left=Var]{ }{
+          \seval*{\envadd{\sigma}{[n \mapsto \embed{0}]}}{\embed n}{\embed 0}
+        }
+      }
+      {\seval*{\envadd{\sigma}{[n \mapsto \embed{0}]}}{\embed{\holconst{even}\;n}}{\embed{\holconst{True}}}}
+    }
+    {\seval*{\envadd{[]}{\envadd{\holconst{mk\_rec\_env}\;\css\;[]}{[n \mapsto \embed{0}]}}}{\embed{\holconst{even}\;n}}{\embed{\holconst{True}}}}
+  }
+  {\seval*\sigma{\embed{\holconst{odd}\;(\holconst{Suc}\;0)}}{\embed{\holconst{True}}}}
+\]
+
+\noindent
+The tree is annotated with the rules from the semantics.
+The step \textdagger{} is not a rule application, but a simplification, because $\holconst{mk\_rec\_env}\;\css\;[] = \sigma$.
+This example illustrates that \holconst{mk\_rec\_env} allows recursive calls without introducing cyclic environments.
+
+\subsection{Correspondence relation}
+
+\begin{code}[t]
+  \[
+    \inferrule*{
+      \holconst{rel}\;(\approx_\text{v})\;\mathit{vs}\;\mathit{us}
+    }{
+      \corrv{\holconst{Vconstr}\;\mathit{name}\;\mathit{vs}}{\holconst{Vconstr}\;\mathit{name}\;\mathit{us}}
+    }
+  \]
+  \[
+    \inferrule*{
+      \forall x \in \holconst{frees}\;(\Lambda\;\cs).\; \corrv{\sigma_1\;x}{\sigma_2\;x} \\
+      \forall x \in \holconst{consts}\;(\Lambda\;\cs).\; \corrv{\rs\;x}{\sigma_2\;x}
+    }{
+      \corrv{\holconst{Vabs}\;\cs\;\sigma_1}{\holconst{Vabs}\;\cs\;\sigma_2}
+    }
+  \]
+  \[
+    \inferrule*{
+      \forall \cs \in \holconst{range}\;\css.\; \forall x \in \holconst{frees}\;(\Lambda\;\cs).\; \corrv{\sigma_1\;x}{\sigma_2\;x} \\
+      \forall \cs \in \holconst{range}\;\css.\; \forall x \in \holconst{consts}\;(\Lambda\;\cs).\; \corrv{\rs_\text{v}\;x}{(\envadd{\sigma_2}{\holconst{mk\_rec\_env}\;\css\;\sigma_2})\;x}
+    }{
+      \corrv{\holconst{Vrecabs}\;\css\;\mathit{name}\;\sigma_1}{\holconst{Vrecabs}\;\css\;\mathit{name}\;\sigma_2}
+    }
+  \]
+  \caption{Right-conflating correspondence (coinductive)}
+  \label{code:intermediate:ml:corr}
+\end{code}
+
+Both constant definitions and values of variables are recorded in a single environment $\sigma$.
+This also applies to the environment contained in a closure.
+The correspondence relation thus needs to take a different sets of bindings in closures into account.
+
+Hence, I define a coinductive relation $\approx_\text{v}$ that uses the computed rule set $\rs_\text{v}$ (§\ref{sec:intermediate:value:sublocale}) and compares environments (\cref{code:intermediate:ml:corr}).
+I call it \emph{right-conflating}, because in a correspondence $\corrv v u$, any bound environment in $u$ is thought to contain both variables and constants (i.e., the environment is conflated), whereas in $v$, any bound environment contains only variables.
+In the correctness property, $v$ and $u$ will originate from the previous and the ML-style semantics, respectively.
+
+It is worth examining the definition of $\approx_\text{v}$:
+\begin{semantics}
+  \item[Vconstr]
+    Constructors are compared structurally.
+  \item[Vabs]
+    Non-recursive closures must have identical clauses $\mathit{cs}$.
+    The bound environment $\sigma_2$ of the right closure is compared on two subsets:
+    \begin{itemize}
+      \item on the free variables of $\mathit{cs}$, it must correspond to the bound environment $\sigma_1$ of the left closure, and
+      \item on the constants of $\mathit{cs}$, it must correspond to the rules $\rs$ of the global environment.
+    \end{itemize}
+  \item[Vrecabs]
+    Recursive closures are treated similarly to non-recursive closures, with one exception:
+    In the constants of the clauses set $\mathit{css}$, $\sigma_2$ is first augmented with $\holconst{mk\_rec\_env}\;\css\;\sigma_2$ before relating to \rs.
+    This corresponds to the \textsc{RecComb} rule of the semantics.
+    It is also the reason why this relation must be coinductive:
+    any derivation tree involving recursive closures will be infinite, because the recursive environment keeps being inserted into $\sigma_2$.
+\end{semantics}
+
+\noindent
+This relation has some perhaps surprising properties.
+Most importantly, it is not reflexive.
+For example, assuming a constant \holconst{a} is defined, the following proposition does not hold:
+%
+\[
+  \corrv{\holconst{Vabs}\;\cs\;[]}{\holconst{Vabs}\;\cs\;[]} \quad\text{where}\;\cs = [\embed{x} \Rightarrow \embed{\holconst{a}}]
+\]
+%
+Fortunately, $\approx_\text{v}$ fits into the usual scheme of relations:
+
+\begin{corollary}
+  $\approx_\text{\normalfont v}$ is a structural value relation (§\ref{sec:terms:types:value:rel}).
+\end{corollary}
+
+\noindent
+Similarly to $\approx_\text{p}$ (\cref{code:intermediate:elim:corr}), this somewhat technical definition implies a more intuitive property:
+\begin{lemma}
+  $\corrv{u}{v} \implies \holconst{value\_to\_sterm}\;u = \holconst{value\_to\_sterm}\;v$
+\end{lemma}
+
+\noindent
+\cref{thm:terms:types:value:rel:collapse} also applies; i.e., for closure-free values, $\approx_\text{v}$ collapses to equality.
+
+\subsection{Correctness}
+
+\begin{theorem}
+  \label{thm:intermediate:ml}
+  Let $\sigma$ be an environment, $t$ be a closed term and $v$ a value such that $\seval*{\sigma}{t}{v}$.
+  If for all constants $x$ occurring in $t$, $\corrv{\rs\;x}{\sigma\;x}$ holds, then there is an $u$ such that $\seval{\rs}{[]}{t}{u}$ and $\corrv{u}{v}$.
+\end{theorem}
+
+\noindent As usual, the proof proceeds via induction over the semantics (\cref{code:intermediate:ml}).
+It is important to note that the global clause set\index{global clause set} construction (§\ref{sec:intermediate:value:sublocale}) satisfies the preconditions of the theorem:
+
+\begin{lemma}
+  If $\mathit{name} \in \holconst{dom}\;\holconst{global\_css}$, then:
+  \[
+    \corrv{\holconst{Vrecabs}\;\holconst{global\_css}\;\mathit{name}\;[]}{\holconst{Vrecabs}\;\holconst{global\_css}\;\mathit{name}\;[]}
+  \]
+\end{lemma}
+
+\begin{proof}
+  Because $\approx_\text{v}$ is defined coinductively, the proof of this precondition proceeds by coinduction.
+  In essence, I have to use the \holconst{Vrecabs} rule of $\approx_\text{v}$.
+  But because $\sigma_1 = \sigma_2 = []$, the first premise of the rule is trivial and the second one collapses to a correspondence between $\rs_\text{v}$ and $\holconst{mk\_rec\_env}\;\holconst{global\_css}$.
+  This is a direct consequence of \cref{thm:intermediate:value:rs-mk-rec-env}, which shows an equality between those two maps.
+\end{proof}

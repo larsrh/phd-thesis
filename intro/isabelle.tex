@@ -1,0 +1,19 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Isabelle}
+\label{sec:intro:isabelle}
+
+Isabelle is a system in the category of \emph{interactive theorem provers}~\cite{nipkow2014semantics}.
+These systems provide a facility for \emph{machine-checked proofs:} a user may present a proof phrased in a formal language to the system which will then check its correctness according to the logic implemented in the system.
+
+Working with \emph{interactive} theorem provers has often been compared to playing a video game, in which the user's objective is to navigate some rules (the logics) to achieve their goal (the proof), while constantly facing adversities (flaws).
+Interactivity here means that feedback is immediate and the user can change their reasoning steps incrementally, repeated until both user and machine are satisfied.
+To that end, Isabelle ships with an integrated development environment providing similar amenities to those of industry-strength programming languages.
+
+The immediate question is the trustworthiness of Isabelle itself.
+As is common in the \emph{LCF} family, its implementation strategy is to clearly delineate a \emph{kernel} providing a set of primitive inference rules and bookkeeping of definitions and other logical content.
+All reasoning goes through this kernel, which -- being only a small part of the full system -- can be inspected by critical readers for flaws.
+The kernel is implemented in the programming language Standard ML whose strong abstraction and type soundness guarantees make it particularly suitable for proof assistants.
+In fact, Standard ML's predecessor, \emph{Meta Language} (\emph{ML} for short) has been designed by Robin Milner as the implementation language for the LCF proof assistant~\cite[§6]{plotkin2000milner}.
+Furthermore, there is research on verification of proof kernels of similar systems themselves~\cite{kumar2016phd,kumar2016self}.

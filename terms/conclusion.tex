@@ -1,0 +1,14 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Conclusion}
+
+In this section, I have presented a formalization of a term algebra that abstracts over operations that are common in term rewriting.
+This itself is not a novel idea, but it -- to the best of my knowledge -- the first implementation in a proof assistant.
+I have demonstrated its applicability to other term formalizations, too, which could then benefit from a wealth of results.
+
+Further work in this topic includes a generalized implementation of unification.
+While this is not strictly necessary for this formalization, it would avoid duplicated formalization efforts for other applications.
+
+The algebra also allows pain-free definition of different varieties of term types.
+This simplifies the correctness proofs of the compiler phases, because each phase can use a tailored term type.

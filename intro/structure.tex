@@ -1,0 +1,81 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Structure of this thesis}
+
+\begin{figure}[t]
+  \tikzstyle{line} = [draw, dotted, thick]
+  \tikzstyle{block} = [rectangle, fill=blue!20, text centered, text width=5em, minimum height=3em]
+  \tikzstyle{gblock} = [block, fill=red!20]
+  \tikzstyle{mblock} = [block, fill=green!20]
+  \centering
+  \begin{tikzpicture}
+    \path [line] (0.5, 6) node [left] { ML } -- +(13.5, 0) ;
+
+    \node [mblock] (pp) at (3.75, 6) { Pre\-processing };
+    \node [above of=pp] { (§\ref{sec:preproc}) };
+
+    \node [mblock] (embed) at (7.25, 6) { Deep embedding };
+    \node [above of=embed] { (§\ref{sec:deep}) };
+
+    \path [line] (0.5, 3) node [left] { HOL } -- +(13.5, 0) ;
+
+    \node [block] (user) at (2, 3) { User definitions };
+
+    \node [gblock] (simpl) at (5.5, 3) { Simplified definitions };
+
+    \path [draw, thick] ([xshift=.2cm]user.north) |- ([yshift=.3cm]pp.south west);
+    \path [draw, thick, -latex'] ([yshift=.3cm]pp.south east) -| ([xshift=-.2cm]simpl.north);
+
+    \path [line] (0.5, 0) node [left] { \shortstack{Terms \\ (§\ref{sec:terms})} } -- +(13.5, 0) ;
+
+    \node [gblock] (embedded) at (9, 0) { Embedded definitions };
+
+    \path [draw, thick] ([xshift=.2cm]simpl.north) |- ([yshift=.3cm]embed.south west);
+    \path [draw, thick, -latex'] ([yshift=.3cm]embed.south east) -| ([xshift=-.2cm]embedded.north);
+
+    \node [gblock] (cake) at (12.5, 0) { CakeML program };
+
+    \node [mblock] (compiler) at (10.75, 3) { Term compiler };
+    \node [above of=compiler] { (§\ref{sec:compiler}) };
+
+    \path [draw, thick] ([xshift=.2cm]embedded.north) |- ([yshift=.3cm]compiler.south west);
+    \path [draw, thick, -latex'] ([yshift=.3cm]compiler.south east) -| ([xshift=-.2cm]cake.north);
+
+    \node [block, fill=white] at (10.75, 6) { \phantom{Simplifier} }; % hack because checkerboard is transparent
+    \node [mblock, pattern=checkerboard, pattern color=green!20, draw=green!20] (simp) at (10.75, 6) { Simplifier };
+
+    \path [draw=black!50, thick, densely dotted] ([yshift=-.3cm]compiler.north west) -- ([yshift=-.3cm,xshift=-.25cm]compiler.north west) |- ([yshift=.3cm]simp.south west);
+    \path [draw=black!50, thick, densely dotted, -latex'] ([yshift=.3cm]simp.south east) -- ([yshift=.3cm,xshift=.25cm]simp.south east) |- ([yshift=-.3cm]compiler.north east);
+  \end{tikzpicture}
+
+  \small
+  \vspace{1em}
+  \begin{tabular}{ll}
+    % <https://tex.stackexchange.com/a/171785/172786>
+    \cellcolor{green!20} & implemented as part of this thesis \\
+    \multirow{-2}{*}{\cellcolor{green!20}green} & (checkered: already available in Isabelle) \\
+    \cellcolor{blue!20}blue & specified by user \\
+    \cellcolor{red!20}red & generated object
+  \end{tabular}
+
+  \caption{Stages of the compiler from Isabelle to CakeML}
+  \label{fig:overview:structure}
+\end{figure}
+
+After this introduction, a chapter on technical preliminaries will follow (§\ref{sec:background}).
+Subsequently, the thesis is roughly structured according to the phases of the compiler (\cref{fig:overview:structure}).
+The diagram shows the source object as specified by the user and its transformation into the target object.
+Each phase is driven by an implementation, which can either be a certifying one in ML, or a verified one in Isabelle/HOL (the difference is explained in more detail in §\ref{sec:background:terminology}).
+
+The preprocessing phase statically eliminates features that are not supported by the compiler (§\ref{sec:preproc}).
+Most importantly, the \keyword{dictionary construction} (§\ref{sec:preproc:dict}) eliminates uses of an advanced type system feature.
+
+There are various term types that are required for later stages in the compiler.
+§\ref{sec:terms} introduces a term algebra and discusses the differences between those types.
+
+The \keyword{deep embedding} phase (§\ref{sec:deep}) lifts Isabelle terms into an internal model.
+This allows reasoning about Isabelle terms in Isabelle itself.
+
+There are multiple \emph{compiler phases} that process defining equations until a CakeML expression is reached.
+These phases are described in §\ref{sec:compiler}.

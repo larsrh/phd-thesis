@@ -1,0 +1,229 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Evaluation semantics}
+\label{sec:intermediate:value}
+
+\begin{code}[t]
+  \[
+    \inferrule*[left=Const]{(\mathit{name}, \mathit{rhs}) \in \rs}{\seval{\rs}{\sigma}{\holconst{Sconst}\;\mathit{name}}{\mathit{rhs}}}
+    \inferrule*[left=Var]{\sigma\;\mathit{name} = \holconst{Some}\;v}{\seval{\rs}{\sigma}{\holconst{Svar}\;\mathit{name}}{v}}
+    \inferrule*[left=Abs]{ }{\seval\rs\sigma{\Lambda\;\cs}{\holconst{Vabs}\;\cs\;\sigma}}
+  \]
+  \[
+    \inferrule*[left=Comb]{
+      \seval\rs\sigma{t}{\holconst{Vabs}\;\cs\;\sigma'} \\
+      \seval\rs\sigma{u}{v} \\
+      \holconst{find\_match}\;\cs\;v = \holconst{Some}\;(\sigma'', \mathit{rhs}) \\
+      \seval\rs{\envadd{\sigma'}{\sigma''}}{\mathit{rhs}}{v'}
+    }{\seval\rs\sigma{\app t u}{v'}}
+  \]
+  \[
+    \inferrule*[left=RecComb]{
+      \seval\rs\sigma{t}{\holconst{Vrecabs}\;\css\;\mathit{name}\;\sigma'} \\
+      \css\;\mathit{name} = \holconst{Some}\;\cs \\
+      \seval\rs\sigma{u}{v} \\
+      \holconst{find\_match}\;\cs\;v = \holconst{Some}\;(\sigma'', \mathit{rhs}) \\
+      \seval\rs{\envadd{\sigma'}{\sigma''}}{\mathit{rhs}}{v'}
+    }{\seval\rs\sigma{\app t u}{v'}}
+  \]
+  \[
+    \inferrule*[left=Constr]{
+      \mathit{name} \in \C \\
+      \seval\rs\sigma{t_1}{v_1} \\
+      \cdots \\
+      \seval\rs\sigma{t_n}{v_n}
+    }{\seval\rs\sigma{\holconst{Sconst}\;\mathit{name}\mathbin\$t_1\mathbin\$\ldots\mathbin\$t_n}{\holconst{Vconstr}\;\mathit{name}\;[v_1, \ldots, v_n]}}
+  \]
+  \caption{Evaluation semantics}
+  \label{code:intermediate:value}
+\end{code}
+
+The previous big-step semantic evaluates \holtype{sterm}s to \holtype{sterm}s.
+Now, I introduce the concept of values into the semantics, while still keeping the rule set (for constants) and the environment (for variables) separate.
+The evaluation rules are specified in \cref{code:intermediate:value}.
+They represent a departure from the original rewriting semantics:
+a term does not evaluate to another term but to an object of a different type, a \holtype{value}.
+I still use $\downarrow$ as notation, because big-step and evaluation semantics can be disambiguated by their types.
+
+The evaluation model itself is fairly straightforward.
+As explained in §\ref{sec:terms:types:value}, abstraction terms are evaluated to closures capturing the current variable environment.
+
+I will now examine each rule that has changed substantially from the previous semantics.
+
+\begin{semantics}
+  \item[Abs]
+    Abstraction terms are evaluated to a closure capturing the current environment.
+    The resulting value $\holconst{Vabs}\;\cs\;\sigma$ is closed if $\sigma$ is closed and the free variables occurring in $\cs$ are a subset of $\holconst{dom}\;\sigma$.
+  \item[Comb]
+    As before, in an application $\app t u$, $t$ must evaluate to a closure $\holconst{Vabs}\;\cs\;\sigma'$.
+    The evaluation result of $u$ is then matched against the clauses $\cs$, producing an environment $\sigma''$.
+    The right-hand side of the clause is then evaluated using $\envadd{\sigma'}{\sigma''}$; the original environment $\sigma$ is effectively discarded.
+  \item[RecComb]
+    Similar to \textsc{Comb}.
+    Finding the matching clause is a two-step process:
+    First, the appropriate clause list is selected by name of the currently active function.
+    Then, matching is performed.
+\end{semantics}
+
+\remark*{
+  In this semantics, recursive closures are not treated differently from non-recursive closures.
+  In a later stage, when $\rs$ and $\sigma$ are merged, this distinction becomes relevant (§\ref{sec:intermediate:ml}).
+}
+
+\noindent
+The semantics uses a variant of \holconst{find\_match} that matches a \holtype{value} against a pattern by first converting it from \holtype{term} to \holtype{pat} (§\ref{sec:terms:types:pat}).
+This merely simplifies proofs and could be removed completely by fusing the \holconst{vmatch} and \holconst{mk\_pat} functions.
+
+The translations between \holtype{sterm} and \holtype{value} have already been discussed in §\ref{sec:terms:types:value:conv}.
+
+Recall the definition of \holconst{value\_to\_sterm}.
+The translation rules for \holconst{Vabs} and \holconst{Vrecabs} are intentionally similar to the \textsc{Abs} rule from the big-step semantics (\cref{code:intermediate:bigstep}).
+Roughly speaking, the big-step semantics always keeps terms fully substituted, whereas the evaluation semantics defers substitution.
+
+\subsection{Correctness}
+
+The proof of the correctness theorem requires many of the properties proved in §\ref{sec:intermediate:bigstep}.
+
+\begin{theorem}
+  \label{thm:intermediate:value}
+  Let $\sigma$ be a closed environment and $t$ a term which only contains free variables in $\holconst{dom}\;\sigma$.
+  Then, an evaluation to a value $\seval\rs\sigma{t}{v}$ can be reproduced in the big-step semantics as $\seval{\rs_0}{\sigma_0}{t}{\holconst{value\_to\_sterm}\;v}$, where
+  \begin{align*}
+    \rs_0 &= \holconst{map}\;(\holconst{map}_{\holtype{prod}}\;\holconst{id}\;\holconst{value\_to\_sterm})\;\rs \\
+    \sigma_0 &= \holconst{map}\;\holconst{value\_to\_sterm}\;\sigma
+  \end{align*}
+\end{theorem}
+
+\begin{proof}
+  By rule induction on the evaluation semantics.
+  The interesting cases are \textsc{Comb} and \textsc{RecComb}.
+  Both are roughly identical, save for the additional complication that \textsc{RecComb} has an extra selection step to find the clause set.
+  I will omit that for brevity and focus on the \textsc{Comb} case.
+
+  In this case, I need to show that function application behaves the same way in both semantics.
+  Formally:
+    \[ \seval{\rs_0}{\holconst{map}\;\holconst{value\_to\_sterm}\;\sigma}{\app t u}{\holconst{value\_to\_sterm}\;v'} \]
+  The following induction hypotheses are available (side conditions omitted):
+  \begin{align*}
+    &\seval{\rs_0}{\holconst{map}\;\holconst{value\_to\_sterm}\;\sigma}{t}{\holconst{value\_to\_sterm}\;(\holconst{Vabs}\;\cs\;\sigma')} \\
+    &\seval{\rs_0}{\holconst{map}\;\holconst{value\_to\_sterm}\;\sigma}{u}{\holconst{value\_to\_sterm}\;v} \\
+    &\seval{\rs_0}{\holconst{map}\;\holconst{value\_to\_sterm}\;(\envadd{\sigma'}{\sigma''})}{\mathit{rhs}}{\holconst{value\_to\_sterm}\;v'}
+  \end{align*}
+  as well as these premises stemming from the \textsc{Comb} rule:
+  \begin{align*}
+    &\seval\rs\sigma{t}{\holconst{Vabs}\;\cs\;\sigma'} \\
+    &\seval\rs\sigma{u}{v} \\
+    &\seval\rs{\envadd{\sigma'}{\sigma''}}{\mathit{rhs}}{v'}
+  \end{align*}
+  Furthermore, it is known that $\holconst{find\_match}\;\cs\;v = \holconst{Some}\;(\sigma'', \mathit{rhs})$.
+  Obtain the corresponding pattern $\mathit{pat}$ such that $(\mathit{pat}, \mathit{rhs}) \in \cs$.
+
+  The first two facts from the hypotheses and the premises line up nicely.
+  The major difference between the two different \textsc{Comb} rules is that in the evaluation semantics, the evaluation of $t$ to a closure reveals a hidden environment $\sigma'$ that is subsequently used in the evaluation of $\mathit{rhs}$.
+  That hidden environment may bear no relation to the active environment $\sigma$ which is used in the big-step semantics.
+  Hence, I use a trick:
+  Pre-substitute in $\mathit{rhs}$ (\cref{thm:intermediate:bigstep:pre}).
+  Then use \cref{thm:intermediate:bigstep:agree} to replace $\sigma'$ for $\sigma$:
+
+  {\small\[
+    \inferrule*[left=Comb]{
+      \cdots\raisebox{3pt}[0pt]{\footnotesize\textdagger} \\
+      \inferrule*[left={\normalfont \cref{thm:intermediate:bigstep:agree}}]{
+        \inferrule*[Left={\normalfont \cref{thm:intermediate:bigstep:pre}}]{
+          \inferrule*[Left=IH]{ }
+          {\seval{\rs_0}{\holconst{map}\;\holconst{value\_to\_sterm}\;(\envadd{\sigma'}{\sigma''})}{\mathit{rhs}}{\holconst{value\_to\_sterm}\;v'}}
+        }
+        {\seval{\rs_0}{\holconst{map}\;\holconst{value\_to\_sterm}\;(\envadd{\sigma'}{\sigma''})}{\mathit{rhs}_{\sigma'}}{\holconst{value\_to\_sterm}\;v'}}
+      }
+      {\seval{\rs_0}{\holconst{map}\;\holconst{value\_to\_sterm}\;(\envadd{\sigma}{\sigma''})}{\mathit{rhs}_{\sigma'}}{\holconst{value\_to\_sterm}\;v'}}
+    }
+    {\seval{\rs_0}{\holconst{map}\;\holconst{value\_to\_sterm}\;\sigma}{\app t u}{\holconst{value\_to\_sterm}\;v'}}
+  \]}
+
+  \noindent where $\mathit{rhs}_{\sigma'} = \holconst{subst}\;(\holconst{map}\;\holconst{value\_to\_sterm}\;\sigma' - \holconst{frees}\;\mathit{pat})\;\mathit{rhs}$.
+  I specifically chose this value for $\mathit{rhs}_{\sigma'}$ to be able to combine both lemmas and to coincide with the definition of \holconst{value\_to\_sterm}.
+  The evaluations of $t$ and $u$ in the \textsc{Comb} rule have been omitted ($\textdagger$), because they are trivial.
+
+  Recall that the precondition for \cref{thm:intermediate:bigstep:pre} (instantiated to this case) is that $\sigma' - \holconst{frees}\;\mathit{pat} \subseteq \envadd{\sigma'}{\sigma''}$.
+  However, when adding two environments, the entries on the right override the entries on the left.
+  But from the premises and the \holclass{term} axioms, it is known that $\holconst{dom}\;\sigma'' = \holconst{frees}\;\mathit{pat}$.
+  It follows that $\sigma' - \holconst{frees}\;\mathit{pat}$ contains no entries that are also contained in $\sigma''$, proving the precondition.
+
+  The situation is similar for the application of \cref{thm:intermediate:bigstep:agree}.
+  I can instantiate $S$ with $\holconst{frees}\;\mathit{pat}$ and must show that $\envadd{\sigma'}{\sigma''}$ and $\envadd{\sigma}{\sigma''}$ agree on this set.
+  This again follows immediately from $\holconst{dom}\;\sigma'' = \holconst{frees}\;\mathit{pat}$.
+
+  The remainder of the proof is mostly clerical and takes care of lining up further preconditions.
+\end{proof}
+
+\subsection{Discussion}
+\label{sec:intermediate:value:sublocale}
+
+The correctness theorem states that, for any given evaluation of a term $t$ with given $\rs, \sigma$ containing \holtype{value}s, that evaluation can be reproduced in the big-step semantics using a derived list of rules $\rs_0$ and an environment $\sigma_0$ containing \holtype{sterm}s that are generated by the $\holconst{value\_to\_sterm}$ function.
+But recall the diagram in \cref{fig:intermediate}.
+In the formalization, it starts with a given rule set of \holtype{sterm}s that has been compiled from a rule set of \holtype{term}s.
+Hence, the correctness theorem only deals with the opposite direction.
+
+It remains to construct a suitable $\rs$ such that applying \holconst{value\_to\_sterm} to it yields the given \holtype{sterm} rule set.
+I exploit the side condition (§\ref{sec:intermediate:wellformed}) that all bindings define proper functions, i.e., the right-hand sides are abstractions:
+
+\begin{definition}[Global clause set]\label{def:intermediate:value:global}\index{global clause set}\holconstindex{global\_css}
+  The mapping
+  \[ \holtypejudgement{\holconst{global\_css}}{\holtype{string} \rightharpoonup ((\holtype{term} \times \holtype{sterm})\;\holtype{list})} \]
+  is obtained by stripping the \holconst{Sabs} constructors from all definitions and converting the resulting list to a mapping.
+  For each non-constructor constant \holconst{c}, define its closure representation as
+  \[ \holconst{v}_\holconst{c} = \holconst{Vrecabs}\; \holconst{global\_css} \;c\;[] \]
+  where $c$ is the string representation of the name \holconst{c}.
+\end{definition}
+
+\noindent
+In other words, each function is now represented by a recursive closure bundling all functions.
+
+\begin{lemma}
+  Let $(c, \Lambda\;\mathit{cs})\in\rs$.
+  Applying \holconst{value\_to\_sterm} to $\holconst{v}_\holconst{c}$ returns the original definition of \holconst{c}.
+  Formally: $\holconst{value\_to\_sterm}\;\holconst{v}_\holconst{c} = \Lambda\;\mathit{cs}$.
+\end{lemma}
+
+\noindent
+Let $\rs$ denote the original \holtype{sterm} rule set and $\rs_\text{v}$ the environment mapping all constants to their closure representations.
+
+\begin{corollary}\label{thm:intermediate:value:sublocale}
+  $\rs = \holconst{map}\;(\holconst{map}_{\holtype{prod}}\;\holconst{id}\;\holconst{value\_to\_sterm})\;\rs_\text{v}$
+\end{corollary}
+
+\noindent
+Furthermore, the variable environments $\sigma$ and $\sigma'$ can safely be set to the empty mapping, because top-level terms are evaluated without any free variable bindings.
+Combined, this enables instantiation of \cref{thm:intermediate:value}:
+
+\begin{corollary}[Correctness]
+  $\seval{\rs_\text{v}}{[]}{t}{v} \implies \seval{\rs}{[]}{t}{\holconst{value\_to\_sterm}\;v}$
+\end{corollary}
+
+\noindent
+Even though $\rs_\text{v}$ is executable (§\ref{sec:background:code}), this step is not part of the compiler.
+Instead, it is a refinement of the semantics to support a more modular correctness proof.
+
+\paragraph{Example}
+
+Recall the \holconst{odd} and \holconst{even} example from~§\ref{sec:terms:types:value}.
+After compilation to \holtype{sterm}, the rule set looks like this:
+\[
+  \begin{aligned}
+    \rs = \{ &(\mathtt{"odd"},  \holconst{Sabs}\; [\embed0 \Rightarrow \embed{\holconst{False}}, \embed{\holconst{Suc}\;n} \Rightarrow \embed{\holconst{even}\;n}]), \\
+             &(\mathtt{"even"}, \holconst{Sabs}\; [\embed0 \Rightarrow \embed{\holconst{True}}, \embed{\holconst{Suc}\;n} \Rightarrow \embed{\holconst{odd}\;n}])
+    \}
+  \end{aligned}
+\]
+This can be easily transformed into the following global clause set:
+\begin{align*}
+  \holconst{global\_css} = [&\mathtt{"odd"} \mapsto [ \embed0 \Rightarrow \embed{\holconst{False}}, \embed{\holconst{Suc}\;n} \Rightarrow \embed{\holconst{even}\;n}], \\
+                            &\mathtt{"even"} \mapsto [ \embed0 \Rightarrow \embed{\holconst{True}}, \embed{\holconst{Suc}\;n} \Rightarrow \embed{\holconst{odd}\;n}]]
+\end{align*}
+Finally, $\rs_\text{v}$ is computed by creating a recursive closure for each function:
+\begin{align*}
+  \rs_\text{v} =
+    [&\mathtt{"odd"} \mapsto \holconst{Vrecabs}\;\holconst{global\_css}\;\mathtt{"odd"}\;[], \\
+     &\mathtt{"even"} \mapsto \holconst{Vrecabs}\;\holconst{global\_css}\;\mathtt{"even"}\;[]]
+\end{align*}

@@ -1,0 +1,628 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Term types}
+\label{sec:terms:types}
+
+\authorship{
+  Portions of this section are based on the publications \citetitle{hupel2018compiler}, authored by \citeauthor{hupel2018compiler}~\cite{hupel2018compiler}, and the AFP entry \citetitle{hupel2019algebra}, authored by \citeauthor{hupel2019algebra}~\cite{hupel2019algebra}.
+}
+
+\begin{code}
+  \begin{subfigure}[t]{.4\linewidth}
+    \begin{lstlisting}[language=Isabelle]
+datatype nterm =
+  Nconst string |
+  Nvar string |
+  Nabs string nterm |
+  Napp nterm nterm\end{lstlisting}\holtypeindex{nterm}
+    \caption{Explicit bound variable names}
+    \label{code:terms:intermediate:named}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{.55\linewidth}
+    \begin{lstlisting}[language=Isabelle]
+datatype pterm =
+  Pconst string |
+  Pvar string |
+  Pabs ((term $\times$ pterm) set) |
+  Papp pterm pterm\end{lstlisting}\holtypeindex{pterm}
+    \caption{Explicit pattern matching}
+    \label{code:terms:intermediate:pabs}
+  \end{subfigure}
+
+  \begin{subfigure}[t]{.4\linewidth}
+    \begin{lstlisting}[language=Isabelle]
+datatype sterm =
+  Sconst string |
+  Svar string |
+  Sabs ((term $\times$ sterm) list) |
+  Sapp sterm sterm\end{lstlisting}\holtypeindex{sterm}
+    \caption{Ordered clauses}
+    \label{code:terms:intermediate:seq}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{.55\linewidth}
+    \begin{lstlisting}[language=Isabelle]
+datatype value =
+  Vconstr string (value list) |
+  Vabs ((term $\times$ sterm) list)
+       (string $\holmap$ value) |
+  Vrecabs (string $\holmap$ ((term $\times$ sterm) list))
+          string
+          (string $\holmap$ value)\end{lstlisting}\holtypeindex{value}
+    \caption{Values}
+    \label{code:terms:intermediate:value}
+  \end{subfigure}
+  \caption{Intermediate term types}
+  \label{code:terms:intermediate}
+\end{code}
+
+\noindent
+The original \holtype{term} type was already given in \cref{code:background:rewriting:term}.
+The intermediate types are depicted in \cref{code:terms:intermediate}.
+In this section, I will briefly describe them and explain how they differ from each other.
+The proofs of the term algebra laws (§\ref{sec:terms:algebra}) are mostly technical, so I omit them here.
+
+\subsection{de~Bruijn terms (\holtype{term})}
+\label{sec:terms:types:term}
+
+\begin{code}
+  \begin{lstlisting}[language=Isabelle]
+definition shift_nat :: nat $\Rightarrow$ int $\Rightarrow$ nat where
+shift_nat //n// //k// = ||if|| //k// $\geq$ $0$ ||then|| //n// + nat //k// ||else|| //n// - nat |//k//|
+
+fun incr_bounds :: int $\Rightarrow$ nat $\Rightarrow$ term $\Rightarrow$ term where
+incr_bounds //inc// //lev// (Bound //i//) =
+  (if //i// $\geq$ //lev// then Bound (shift_nat //i// //inc//) else Bound //i//)
+incr_bounds //inc// //lev// ($\Lambda$ //u//) = $\Lambda$ incr_bounds //inc// (//lev// + $1$) //u//
+incr_bounds //inc// //lev// ($t_1$ $\$$ $t_2$) = incr_bounds //inc// //lev// $t_1$ $\$$ incr_bounds //inc// //lev// $t_2$
+incr_bounds _ _ //t// = //t//
+
+fun replace_bound :: nat $\Rightarrow$ term $\Rightarrow$ term $\Rightarrow$ term where
+replace_bound //lev// (Bound //i//) //t// =
+  ||if|| //i// < //lev// ||then|| Bound //i//
+  ||else if|| //i// = //lev// ||then|| incr_bounds (int //lev//) $0$ //t//
+  ||else|| Bound (//i// - $1$)
+replace_bound //lev// ($t_1$ $\$$ $t_2$) //t// = replace_bound //lev// $t_1$ //t// $\$$ replace_bound //lev// $t_2$ //t//
+replace_bound //lev// ($\Lambda$ //u//) //t// = $\Lambda$ replace_bound (//lev// + $1$) //u// //t//
+replace_bound _ //t// _ = //t//
+
+abbreviation $\beta$_reduce :: term $\Rightarrow$ term $\Rightarrow$ term (_ [_]) where
+//t// [//u//] $\equiv$ replace_bound $0$ t u\end{lstlisting}\index{beta-reduce@{$\beta\_\holconst{reduce}$ (constant)}}\index{beta-reduction@$\beta$-reduction}
+  \caption{$\beta$-reduction on \holtype{term}s using index shifting}
+  \label{code:terms:types:beta}
+\end{code}
+
+\holtypeindex{term}
+The definition of \holtype{term} is almost an exact copy of Isabelle's internal term type, with the notable omissions of type information (§\ref{sec:background:rewriting}).
+The implementation of $\beta$-reduction is straightforward via index shifting of bound variables (\cref{code:terms:types:beta}).
+Substitution of free variables does not require any additional assumptions, because capture is impossible.
+The full instantiation of the \holtype{term} class has already been given in \cref{code:terms:algebra:inst}.
+
+\subsection{Explicit names (\holtype{nterm})}
+
+\holtypeindex{nterm}
+The \holtype{nterm} type is similar to \holtype{term}, but removes the distinction between \emph{bound} and \emph{free} variables (\cref{code:terms:intermediate:named}).
+Instead, there are only named variables.
+To avoid capture during substitution, there is an additional constraint that only closed terms may be substituted into terms.
+This is reflected in the precondition of \cref{thm:terms:algebra:subst-vars} of the \holclass{term} class.
+
+Looking at the bigger picture, this is reasonable, because substitutions are only performed with closed terms.
+However, for proofs, it might still be necessary, so appropriate preconditions need to control when substitution is safe.
+
+The instantiation \holtypejudgement{\holtype{nterm}}{\holclass{term}} is given below:
+%
+\begin{align*}
+  \holconst{const} &= \holconst{Nconst}  &  \holconst{consts}\;(\holconst{Nabs}\;x\;t) &= \holconst{consts}\;t \\
+  \holconst{free} &= \holconst{Nvar} & \holconst{frees}\;(\holconst{Nabs}\;x\;t) &= \holconst{frees}\;t - \{x\} \\
+  \holconst{app} &= \holconst{Napp} & \holconst{subst}\;\sigma\;(\holconst{Nabs}\;x\;t) &= \holconst{Nabs}\;(\holconst{subst}\;(\sigma - x)\;t) \\
+  \omit\rlap{$\holconst{abs\_pred}\;P\;t = (\forall x\;t'.\;t = \holconst{Nabs}\;x\;t' \implies P\;t' \implies P\;t)$}
+\end{align*}
+
+\noindent
+The main difference to the \holtype{term} type is that the bound variable name affects substitution, i.e., it needs to be dropped from the environment.
+
+\subsection{Explicit pattern matching (\holtype{pterm})}
+\label{sec:terms:types:pterm}
+\holtypeindex{pterm}
+
+Functions in Isabelle are usually defined using \emph{implicit} pattern matching, that is, the terms $p_i$ occurring on the left-hand side $f\;p_1\;\ldots\;p_n$ of an equation may be constructor patterns.
+This is also common among functional programming languages like Haskell or OCaml.
+CakeML only supports \emph{explicit} pattern matching using case expressions.
+A function definition consisting of multiple defining equations must hence be translated to the form $f = \lambda x.\;\holkeyword{case}\;x\;\holkeyword{of}\;\ldots$.
+The elimination proceeds by iteratively removing the last parameter in the block of equations until none are left (§\ref{sec:intermediate:elim}).
+
+In my formalization, I have decided to conflate the notion of ``abstraction'' and ``case expression'', yielding \emph{case abstractions,} represented as the \holconst{Pabs} constructor in \cref{code:terms:intermediate:pabs}.
+This is similar to the \texttt{fn} construct in Standard ML, which denotes an anonymous function that immediately matches on its argument~\cite{milner1997definition}.
+The same construct also exists in Haskell with the \texttt{LambdaCase} language extension in Haskell.\footnote{\url{https://downloads.haskell.org/~ghc/7.8.4/docs/html/users_guide/syntax-extns.html}}
+As in §\ref{sec:terms:algebra:thy:matching}, the pairs of patterns and terms are referred to as \emph{clauses}.
+
+I chose this representation for these reasons:
+\begin{enumerate}
+  \item
+    It allows for a simpler language grammar because there is only one (shared) constructor for abstraction and case expression.
+  \item
+    The elimination procedure outlined above does not need to introduce fresh names in the process.
+    Later, when translating to CakeML syntax, fresh names are introduced and proved correct in a separate step (§\ref{sec:intermediate:cakeml}).
+\end{enumerate}
+
+\noindent
+Furthermore, observe that the clauses are unordered and are hence a set.
+This stems from the unordered nature of the term-rewriting semantics (\cref{code:background:rewriting:semantics}): if a rule matches, it can be applied, no matter what order the rules were defined in.
+
+As a short-hand notation, $\Lambda\{ p_1 \Rightarrow t_1, p_2 \Rightarrow t_2, \ldots \}$ represents $\holconst{Pabs}\;\{ (p_1, t_1), (p_2, t_2), \ldots \}$.
+
+The instantiation \holtypejudgement{\holtype{pterm}}{\holclass{term}} is a bit more complicated than for \holtype{nterm}, because it has to take multiple clauses into account:
+\begin{align*}
+  \holconst{consts}\;(\holconst{Pabs}\;\cs) &= \bigcup\limits_{(p, t) \in \cs} \holconst{consts}\;t \\
+  \holconst{frees}\;(\holconst{Pabs}\;\cs) &= \bigcup\limits_{(p, t) \in \cs} \holconst{frees}\;t - \holconst{frees}\;p \\
+  \holconst{subst}\;\sigma\;(\holconst{Pabs}\;\cs) &= \holconst{Pabs}\;\{ (p, \holconst{subst}\;(\sigma - \holconst{frees}\;p)\;t) \mid (p, t) \in \cs \} \\
+  \holconst{abs\_pred}\;P\;t &= (\forall \cs.\;t = \holconst{Pabs}\;\cs \implies (\forall\;p\;t.\;(p, t) \in \cs \implies P\;t) \implies P\;t)
+\end{align*}
+%
+As for \holtype{nterm}s, substitution is only supported for closed terms.
+
+\subsection{Ordered clauses (\holtype{sterm})}
+\label{sec:terms:types:sterm}
+\holtypeindex{sterm}
+
+For CakeML, the clauses need to be applied in a deterministic order, i.e., sequentially.
+The \holtype{sterm} type only differs from \holtype{pterm} by using \holtype{list} instead of \holtype{set} (\cref{code:terms:intermediate:seq}).
+Hence, case abstractions use list brackets: $\Lambda[p_1 \Rightarrow t_1, p_2 \Rightarrow t_2, \ldots]$.
+
+The instantiation \holtypejudgement{\holtype{sterm}}{\holclass{term}} is largely similar to above.
+
+The proofs of \cref{thm:terms:algebra:subst-vars,thm:terms:algebra:subst-consts} can be shared between \holtype{sterm} and \holtype{pterm} with a simple trick.
+First, I define a function that converts from \holtype{sterm} to \holtype{pterm}; call it \holconst{sterm\_to\_pterm} (the implementation is given in \cref{code:intermediate:seq:convert}).
+This is always possible, because one can always discard an ordering, i.e., turn a list into a set.
+Next, I prove that this conversion function is total and that the free variables and constants are preserved by it.
+Finally, the following lemma allows to transfer results from \holtype{sterm} to \holtype{pterm}:
+%
+\begin{lemma}
+  \[ \holconst{subst}\;(\holconst{map}\;\holconst{sterm\_to\_pterm}\;\sigma)\;(\holconst{sterm\_to\_pterm}\;t) = \holconst{sterm\_to\_pterm}\;(\holconst{subst}\;\sigma\;t) \]
+\end{lemma}
+
+\noindent
+Taken to its conclusion, this trick could eventually be used to define \holtype{pterm} as a quotient type of \holtype{sterm}~\cite{huffman2013lifting}.
+
+\remark*{
+  For all terms that do not contain abstractions, \holconst{sterm\_to\_pterm} coincides with \holconst{convert\_term}.
+  This applies to all conversion functions between term types that are used in the compiler (§\ref{sec:compiler}).
+}
+
+\subsection{Irreducible terms (\holtype{value})}
+\label{sec:terms:types:value}
+\holtypeindex{value}
+
+CakeML distinguishes between \emph{expressions} and \emph{values}.
+Whereas expressions may contain free variables or $\beta$-redexes, values are closed and fully evaluated.
+Both have a notion of abstraction, but values differ from expressions in that they contain an environment binding free variables.
+
+Consider the expression $(\lambda x. \lambda y. x)\;(\lambda z. z)$, which can be rewritten to $\lambda y. \lambda z. z$ by $\beta$-reduction.
+Note how the bound variable $x$ disappears, since it gets substituted.
+This is contrary to how programming languages are usually implemented:
+Evaluation does not happen by substituting the argument term $t$ for the bound variable $x$, but by recording the binding $x \mapsto t$ in an environment \cite{kumar2014cakeml}.
+A pair of an abstraction and an environment is usually called a \keyword{closure}~\cite{landin1964mechanical,turner2013history}.
+Similarly to \holtype{pterm} and \holtype{sterm}, pattern matching is immediate, which is why the body of a closure is a list of clauses.
+
+In CakeML, this means that evaluation of the above expression results in the closure $(\lambda y. x, \left[\texttt{"x"} \mapsto (\lambda z. z, []) \right])$.
+Note the nested structure of the closure, whose environment itself contains a closure.
+
+To reflect this in the formalization, I introduce a \holtype{value} type (\cref{code:terms:intermediate:value}) which distinguishes between:
+\begin{induction}
+  \item[Vconstr] constructor values: a data constructor applied to multiple values
+  \item[Vabs] closures: clauses combined with an environment mapping variables to values
+  \item[Vrecabs] recursive closures: a group of mutually recursive function bodies with an environment mapping variables to values
+\end{induction}
+
+\noindent
+The above example evaluates to the closure
+%
+\[ \holconst{Vabs}\;\big[\embed y \Rightarrow \embed x\big]\;\big[\texttt{"x"} \mapsto \holconst{Vabs}\;[\embed z \Rightarrow \embed z]\;[]\big] \]
+%
+
+\paragraph{Recursive closures}\index{closure, recursive}
+The third case for recursive closures only becomes relevant late in the compiler (§\ref{sec:intermediate:ml}).
+In the initial term-rewriting semantics, there is a clear distinction between constants and variables.
+Constants and their definitions are recorded in the rule set \rs.
+Consequently, recursive calls are straightforward:
+The appropriate definition for the constant can be looked up there.
+CakeML knows no such distinction between constants and variables, hence everything has to reside in a single environment $\sigma$.
+
+This can be illustrated with the following example.
+Consider the defining equations of \holconst{odd} and \holconst{even}:
+\begin{align*}
+  \holconst{odd}\;0 &= \holconst{False} \\
+  \holconst{odd}\;(\holconst{Suc}\;n) &= \holconst{even}\;n \\
+  \holconst{even}\;0 &= \holconst{True} \\
+  \holconst{even}\;(\holconst{Suc}\;n) &= \holconst{odd}\;n
+\end{align*}
+
+\noindent
+When evaluating the term $\holconst{odd}\;k$, the definitions of \holconst{even} and \holconst{odd} themselves must be available in the environment captured in the definition of \holconst{odd}.
+However, there is no way in Isabelle to inductively construct such a \holconst{Vabs} that refers to itself, because that would be an infinite object.
+Instead, the expressions used to define \holconst{odd} and \holconst{even} are captured in a recursive closure.
+There might be an alternative design using coinduction, but I have chosen to follow the same path as CakeML, where it is modelled in a similar way as here.
+
+For the above example, this would result in the following global environment:
+%
+\[
+  [\texttt{"odd"} \mapsto \holconst{Vrecabs}\;\css\;\texttt{"odd"}\;[], \texttt{"even"} \mapsto \holconst{Vrecabs}\;\css\;\texttt{"even"}\;[]]
+\]
+\[
+  \begin{aligned}
+    \text{where } \css = [&\texttt{"odd"} \mapsto [ \embed0 \Rightarrow \embed{\holconst{False}}, \embed{\holconst{Suc}\;n} \Rightarrow \embed{\holconst{even}\;n}], \\
+                          &\texttt{"even"} \mapsto [ \embed0 \Rightarrow \embed{\holconst{True}}, \embed{\holconst{Suc}\;n} \Rightarrow \embed{\holconst{odd}\;n}]]
+  \end{aligned}
+\]
+
+\noindent
+Note that in the first line, the right-hand sides are values, but in \css{}, they are expressions.
+The additional string argument denotes the \emph{active} function\index{function, active}.
+The semantics then takes care to add those to the environment as appropriate.
+
+\subsubsection{Conversions}
+\label{sec:terms:types:value:conv}
+
+The lack of a suitable \holclass{term} instantiation notwithstanding, it is possible to establish a relationship with \holtype{sterm}s by defining conversion functions.
+Similar to how \holconst{linear} characterizes \holtype{term}s that lie within the pattern fragment, \holconst{is\_value}\holconstindex{is\_value} characterizes \holtype{sterm}s that lie within the value fragment.
+%
+\[
+  \inferrule*{
+  }{\holconst{is\_value}\;(\Lambda\;\cs)} \quad
+  \inferrule*{
+    \mathit{name} \in \C \\
+    \forall t \in \mathit{ts}.\; \holconst{is\_value}\;t
+  }{\holconst{is\_value}\;(\listcomb{\mathit{name}}{\mathit{ts}})}
+\]
+%
+\noindent
+Informally, a term that satisfies that predicate is referred to as a \keyword{term-value}.
+Observe that this definition is parametrized on \C, which is the set of all constructor names in any given theory.
+This set is automatically generated during deep embedding (§\ref{sec:deep:rel}).
+
+The actual conversion from values to terms can be described as executing the substitution from the captured environments:
+%
+\begin{lstlisting}
+fun value_to_sterm :: value $\Rightarrow$ sterm where
+value_to_sterm (Vconstr //name// //vs//) =
+  list_comb (Sconst //name//) (map value_to_sterm //vs//)
+value_to_sterm (Vabs //cs// $\sigma$) =
+  $\Lambda$ [(//pat//, subst (map value_to_sterm $\sigma$ $-$ frees pat) //t//)) | (//pat//, //t//) $\leftarrow$ //cs//]
+value_to_sterm (Vrecabs //css// //name// $\sigma$) =
+  $\Lambda$ [(//pat//, subst (map value_to_sterm $\sigma$ $-$ frees pat) //t//)) | (//pat//, //t//) $\leftarrow$ //css// //name//]
+\end{lstlisting}\holconstindex{value\_to\_sterm}
+
+\noindent
+The opposite direction does not need to perform any substitution, but it has to traverse a term according to its applicative structure (§\ref{sec:terms:algebra:thy:applicative}):
+%
+\begin{lstlisting}
+fun sterm_to_value :: sterm $\Rightarrow$ value where
+sterm_to_value //t// = ||case|| strip_comb //t// ||of||
+  (Sconst //name//, //args//) $\Rightarrow$ Vconstr //name// (map sterm_to_value //args//)
+  (Sabs //cs//, []) $\Rightarrow$ Vabs cs [])
+\end{lstlisting}\holconstindex{sterm\_to\_value}
+%
+\noindent
+Note that if the term is an abstraction, the result is a closure with an empty environment.
+
+\remark*{
+  That function to convert from terms to values is underspecified.
+  Its domain is a superset of all terms-values; specifically, terms that contain non-constructor constants are allowed.
+  All other terms yield an unspecified result.
+  For the purpose of this thesis, it is sufficient to assume that \holconst{is\_value} is the domain of \holconst{sterm\_to\_value}.
+}
+
+\begin{lemma}
+  For all term-values $t$, $\holconst{value\_to\_sterm}\;(\holconst{sterm\_to\_value}\;t) = t$.
+\end{lemma}
+
+\noindent
+Unfortunately, the converse direction does not hold: when transforming values to terms, the distinction between recursive and non-recursive closures is lost.
+
+\subsubsection{Syntactic predicates and relations}
+\label{sec:terms:types:value:rel}
+
+\begin{figure}[t]
+  \tikzstyle{block} = [rectangle, fill=blue!10, text width=9em, text centered, node distance=2cm, minimum height=2em]
+  \tikzstyle{explanation} = [rectangle, node distance=8cm, align=left, fill=green!10, minimum width=10.5cm, minimum height=3.5em, anchor=west, text width=10cm]
+  \tikzstyle{line} = [draw, -latex', thick]
+  \tikzstyle{explline} = [draw, densely dashed, thick, color=black!40]
+  \centering
+  \begin{tikzpicture}
+    \node [block] (pred) {\holconst{value\_pred}};
+    \node [block, below of=pred, node distance=2cm] (sterm-pred) {\holconst{value\_sterm\_pred}};
+
+    \path [line] (sterm-pred) -- (pred);
+
+    \node [explanation, right of=pred] (explpred) {
+      $\holtypejudgement{P}{(\holtype{string}\holmap\holtype{value}) \Rightarrow (\holtype{term} \times \holtype{sterm})\;\holtype{list} \Rightarrow \holtype{bool}}$ \\
+      $\holtypejudgement{Q}{\holtype{string} \Rightarrow \holtype{bool}}$ \\
+      $\holtypejudgement{R}{\holtype{string}\;\holtype{set} \Rightarrow \holtype{bool}}$
+    };
+    \path [explline] (pred) -- (explpred);
+
+    \node [explanation, right of=sterm-pred] (explsterm-pred) {
+      $\holtypejudgement{S}{\holtype{sterm} \Rightarrow \holtype{bool}}$ \\
+      $\holconst{pred}\;v \implies S\;(\holconst{value\_to\_sterm}\;v)$
+    };
+    \path [explline] (sterm-pred) -- (explsterm-pred);
+
+    \node [above of=pred, node distance=1.2cm] {\bfseries Locale};
+    \node [above of=explpred, node distance=1.2cm] {\bfseries Parameters \& Assumptions};
+  \end{tikzpicture}
+  {\small\tikz[baseline=-.3em] \path[line] (0, 0) -- (1, 0); sublocale}
+  \begin{flalign*}
+    \text{where:} &&
+    \holconst{pred}\;(\holconst{Vconstr}\;\mathit{name}\;\mathit{vs}) &= Q\;\mathit{name} \wedge (\forall v \in \mathit{vs}.\;\holconst{pred}\;v) \\
+    && \holconst{pred}\;(\holconst{Vabs}\;\cs\;\Gamma) &= P\;\Gamma\;\cs \wedge (\forall v \in \holconst{ran}\;\Gamma.\; \holconst{pred}\;v) \\
+    && \holconst{pred}\;(\holconst{Vrecabs}\;\css\;\mathit{name}\;\Gamma) &= (\forall v \in \holconst{ran}\;\Gamma.\; \holconst{pred}\;v) \wedge \mathit{name} \in \holconst{dom}\;\css \wedge \phantom{foo} \\
+    &&& \qquad R\;(\holconst{dom}\;\css) \wedge (\forall \mathit{name} \in \holconst{dom}\;\css.\; P\;\Gamma\;(\Gamma\;\mathit{name}))
+  \end{flalign*}
+
+  \caption{Syntactic locales on values (predicates)}
+  \label{fig:terms:types:value:pred}
+\end{figure}
+
+\begin{figure}[t]
+  \tikzstyle{block} = [rectangle, fill=blue!10, text width=9em, text centered, node distance=2cm, minimum height=2em]
+  \tikzstyle{explanation} = [rectangle, node distance=8cm, align=left, fill=green!10, minimum width=10.5cm, minimum height=3.5em, anchor=west, text width=10cm]
+  \tikzstyle{line} = [draw, -latex', thick]
+  \tikzstyle{explline} = [draw, densely dashed, thick, color=black!40]
+  {
+  \centering
+  \begin{tikzpicture}
+    \node [block] (rel) {\holconst{value\_struct\_rel}};
+
+    \node [explanation, right of=rel] (explrel) {
+      $\holtypejudgement{Q}{\holtype{value} \Rightarrow \holtype{value} \Rightarrow \holtype{bool}}$ \\
+      $Q\;t_1\;t_2 \implies t_1 \simeq t_2$ \\
+      $\holconst{Vconstr}\;\mathit{name}_1\;\mathit{ts}_1 \simeq \holconst{Vconstr}\;\mathit{name}_2\;\mathit{ts}_2 \biimplies$ \\
+      \quad$\mathit{name}_1 = \mathit{name}_2 \wedge \holconst{rel}\;Q\;\mathit{ts}_1\;\mathit{ts}_2$
+    };
+    \path [explline] (rel) -- (explrel);
+
+    \node [above of=rel, node distance=1.6cm] {\bfseries Locale};
+    \node [above of=explrel, node distance=1.6cm] {\bfseries Parameters \& Assumptions};
+  \end{tikzpicture}
+  }
+
+  where:
+  \[
+    \inferrule*{
+    }{\holconst{Vabs}\;\cs_1\;\Gamma_1 \simeq \holconst{Vabs}\;\cs_2\;\Gamma_2} \quad
+    \inferrule*{
+    }{\holconst{Vrecabs}\;\css_1\;\mathit{name}_1\;\Gamma_1\simeq\holconst{Vrecabs}\;\css_2\;\mathit{name}_2\;\Gamma_2}
+  \]
+  \[
+    \inferrule*{\holconst{rel}\;(\simeq)\;\mathit{ts}\;\mathit{us}
+    }{\holconst{Vconstr}\;\mathit{name}\;\mathit{ts} \simeq \holconst{Vconstr}\;\mathit{name}\;\mathit{us}}
+  \]
+
+  \caption{Syntactic locale on values (relation)}
+  \label{fig:terms:types:value:rel}
+\end{figure}
+
+§\ref{sec:terms:algebra:thy:preds} describes locales providing syntactic predicates on term types.
+Unfortunately, the \holtype{value} type cannot be made an instance of the \holclass{term} class, because it has no notion of free variables: values are always thought to be closed.
+
+Nonetheless, just like for terms, there needs to be some predicate that can be used to enforce syntactic properties on values, because the clauses in a closure may be of arbitrary shape.
+\cref{fig:terms:types:value:pred} lists two locales:
+\holconst{value\_pred} introduces a generic predicate \holconst{pred} for wellformedness checks (§\ref{sec:intermediate:wellformed}) on values and \holconst{value\_sterm\_pred} establishes a connection to predicates on \holtype{sterm}s.
+Contrary to the locales on terms, \holconst{value\_pred} is used to construct a predicate of type $\holtype{value} \Rightarrow \holtype{bool}$, instead of providing more results about existing predicates.
+The motivation behind this is that recursion on values -- because of their complicated structure -- is cumbersome and repetitive, especially termination proofs.
+This locale avoids such duplication.
+
+The locale parameters and the definition of \holconst{pred} itself is sufficiently technical to warrant a high-level explanation.
+$P$ checks a list of clauses against an environment.
+This can, for example, be used to ensure that all free variables in the clauses are bound in the environment.
+Consequently, the instantiation
+%
+\begin{align*}
+  P\;\Gamma\;\cs &= (\forall (p, t)\in\cs.\;\holconst{frees}\;t \subseteq (\holconst{dom}\;\Gamma \cup \holconst{frees}\; p)) \\
+  Q\;\mathit{name} &= \holconst{True} \\
+  R\;\mathit{names} &= \holconst{True}
+\end{align*}
+%
+yields a predicate that is true if and only if a value is closed.
+
+$Q$ and $R$ check the names of the constructor and the closures.
+This is used to avoid collisions with other kinds of constants.
+In the compiler, this becomes relevant at multiple stages; for example, to ensure that no constant with a definition is also, say, a data constructor (see also §\ref{sec:deep} for details).
+
+\remark*{
+  The \holconst{pred} meta-predicate always checks, regardless of the concrete instantiation, that in a recursive closure, the active function is present.
+  This has merely been done for convenience.
+}
+
+\noindent
+Continuing with the above example, the second locale \holconst{value\_sterm\_pred} can be instantiated by defining $S = \holconst{closed}$.
+It remains to be proved that $\holconst{pred}\;v$ implies $\holconst{closed}\;(\holconst{value\_to\_sterm}\allowbreak\;v)$, which is mostly technical and uninteresting.
+
+\cref{fig:terms:types:value:rel} introduces a locale for structural relations between values.
+The $\simeq$ relation represents a basic structural equality that only considers the shape of the value; and in the case of constructors, recursively.
+%
+\begin{lemma}
+  If $t \simeq u$ and $t$ or $u$ contain no closures, then $t = u$.
+\end{lemma}
+%
+\begin{corollary}\label{thm:terms:types:value:rel:collapse}
+  If $Q\;t\;u$ and $t$ or $u$ contain no closures, then $t = u$.
+\end{corollary}
+%
+\begin{corollary}
+  $\simeq$ itself is a structural value relation.
+\end{corollary}
+
+\noindent
+A predicate that ensures the absence of closures can be easily obtained by instantiating \holconst{pred} as follows:
+%
+\begin{align*}
+  P\;\Gamma\;\cs &= \holconst{False} \\
+  Q\;\mathit{name} &= \holconst{True} \\
+  R\;\mathit{names} &= \holconst{False}
+\end{align*}
+%
+All three locales provide further results about matching, but this requires additional material on patterns.
+I will revisit this in §\ref{sec:terms:types:pat}.
+
+\subsubsection{Extensional equivalence}
+\label{sec:terms:types:value:ext}
+
+\begin{code}[t]
+  \[
+    \inferrule*{
+      \holconst{rel}\;(\approx_\text{e})\;\mathit{vs}\;\mathit{us}
+    }{
+      \corre{\holconst{Vconstr}\;\mathit{name}\;\mathit{vs}}{\holconst{Vconstr}\;\mathit{name}\;\mathit{us}}
+    }
+  \]
+  \[
+    \inferrule*{
+      \forall x \in \holconst{ids}\;(\Lambda\;\cs).\; \corre{\sigma_1\;x}{\sigma_2\;x}
+    }{
+      \corre{\holconst{Vabs}\;\cs\;\sigma_1}{\holconst{Vabs}\;\cs\;\sigma_2}
+    }
+    \qquad
+    \inferrule*{
+      \forall \cs \in \holconst{range}\;\css.\; \forall x \in \holconst{ids}\;(\Lambda\;\cs).\; \corre{\sigma_1\;x}{\sigma_2\;x}
+    }{
+      \corrv{\holconst{Vrecabs}\;\css\;\mathit{name}\;\sigma_1}{\holconst{Vrecabs}\;\css\;\mathit{name}\;\sigma_2}
+    }
+  \]
+  \caption{Extensional equivalence of \holtype{value}s}
+  \label{code:terms:types:value:ext}
+\end{code}
+
+A special kind of structural relation on terms is extensionality (\cref{code:terms:types:value:ext}).
+It compares the captured environments based on the \emph{identifiers}\emph{identifier} that occur in the body of the closure.
+The set of identifiers comprises the sets of free variables and constants: $\holconst{ids}\;t = \holconst{frees}\;t \cup \holconst{consts}\;t$.\holconstindex{ids}
+
+As outlined earlier in this section, the closures cases of the \holtype{value} type are thought to contain environments mapping variables to values.
+This is only true up until a particular phase in the compiler (§\ref{sec:intermediate:ml}).
+From that part on, the environments contain mappings for both variables and constants.
+This explains why the extensional equivalence relation uses the set of identifiers to compare the environments.
+
+\begin{lemma}
+  Extensional equivalence is reflexive and a structural value relation.
+\end{lemma}
+
+\subsection{Proper patterns (\holtype{pat})}
+\label{sec:terms:types:pat}
+\holtypeindex{pat}
+
+\begin{code}[t]
+  \begin{lstlisting}[language=Isabelle]
+datatype pat =
+  Patvar string |
+  Patconstr string (pat list)
+
+fun mk_pat :: term $\Rightarrow$ pat where
+mk_pat //pat// = ||case|| strip_comb //pat// ||of||
+  (Const //s//, //args//) $\Rightarrow$ Patconstr //s// (map mk_pat //args//)
+  (Free //s//, []) $\Rightarrow$ Patvar //s//\end{lstlisting}\holconstindex{mk\_pat}
+  \caption{Proper patterns}
+  \label{code:terms:types:pat}
+\end{code}
+
+The \holtype{value} type, instead of using binary function application as all other term types, uses $n$-ary constructor application.
+This introduces a conceptual mismatch between (binary) patterns and values.
+To make some proofs easier, and to introduce an intermediate layer between \holtype{term} patterns and CakeML patterns, I have introduced a \emph{dedicated pattern} type of $n$-ary patterns (\cref{code:terms:types:pat}).
+The function $\holtypejudgement{\holconst{mk\_pat}}{\holtype{term} \Rightarrow \holtype{pat}}$ converts from binary to $n$-ary patterns.
+
+\remark*{
+  Note that the function is underspecified.
+  Its domain is a superset of all linear terms; specifically, terms that are ``almost'' linear but in which the same variable occurs twice are allowed.
+  All other terms yield an unspecified result.
+}
+
+\noindent
+The remainder of this section is concerned with defining a matching function and establishing a correspondence to \holconst{match}; more specifically, for the \holtype{sterm} instantiation of \holconst{match}.
+This works in two steps:
+first, I define a function that matches a \holtype{pat} and an \holtype{sterm},
+then, a function for \holtype{pat} and \holtype{value}.
+
+Because patterns have a nested recursion structure, it becomes necessary to introduce some library functions that deal with lists:
+\begin{align*}
+  \holtypejudgement{\holconst{those}&}{\alpha\;\holtype{option}\;\holtype{list} \Rightarrow \alpha\;\holtype{list}\;\holtype{option}} \\
+  \holtypejudgement{\holconst{map2}&}{(\alpha \Rightarrow \beta \Rightarrow \gamma) \Rightarrow \alpha\;\holtype{list} \Rightarrow \beta\;\holtype{list} \Rightarrow \gamma\;\holtype{list}}
+\end{align*}
+%
+With them, it is now possible to define the intermediate matching function:
+%
+\begin{lstlisting}
+fun match' :: pat $\Rightarrow$ sterm $\Rightarrow$ (string $\holmap$ sterm) option where
+match' (Patvar //name//) //t// = Some [//name// $\mapsto$ //t//]
+match' (Patconstr //name// //ps//) //t// = ||case|| strip_comb //t// ||of||
+  (Sconst //name'//, //vs//) $\Rightarrow$
+    ||if|| //name// = //name'// $\wedge$ length //ps// = length //vs// ||then||
+      map (foldl ($\envadd{}{}$) []) (those (map2 match' //ps// //vs//))
+    ||else||
+      None
+  _ $\Rightarrow$
+    None
+\end{lstlisting}
+%
+\begin{lemma}\label{thm:terms:types:pat:eq}
+  For all linear patterns $p$ and term-values $t$: $\holconst{match}\;p\;t$ is equal to $\holconst{match'}\allowbreak\;(\holconst{mk\_pat}\allowbreak\;p)\allowbreak\;t$.
+\end{lemma}
+
+\noindent
+The proof requires a custom induction rule on linear patterns:
+%
+\begin{lemma}[Linear induction]
+  \[
+    \inferrule*{
+      \holconst{linear}\;t \\
+      \forall s.\; P\;(\holconst{Free}\;s) \\
+      \forall \mathit{name}\;\mathit{args}.\; \holconst{linears}\;\mathit{args} \implies (\forall \mathit{arg} \in \mathit{args}.\; P\;\mathit{arg}) \implies P\;(\listcomb{\mathit{name}}{\mathit{args}})
+    }{P\;t}
+  \]
+\end{lemma}
+%
+\begin{proof}
+  The proof proceeds by well-founded induction on the size measure.
+  Clearly, in the recursive case, all constituent patterns are smaller than their combination.
+  Because $t$ is linear, the cases are exhaustive.
+\end{proof}
+
+\noindent
+Finally, the desired matching function, together with its correctness statement, can be defined:
+%
+\begin{lstlisting}
+fun vmatch :: pat $\Rightarrow$ value $\Rightarrow$ (string $\holmap$ value) option where
+vmatch (Patvar //name//) //v// = Some [//name// $\mapsto$ //v//]
+vmatch (Patconstr //name// //ps//) (Vconstr //name'// //vs//) =
+  ||if|| //name// = //name'// $\wedge$ length //ps// = length //vs// ||then||
+    map (foldl op $\envadd{}{}$ []) (those (map2 vmatch //ps// //vs//))
+  ||else||
+    None
+vmatch _ _ = None
+\end{lstlisting}\holconstindex{vmatch}
+%
+\begin{lemma}[$n$-ary vs. binary patterns]
+  For all linear patterns, the result of \holconst{vmatch} corresponds (with respect to \holconst{value\_to\_sterm}) to \holconst{match}. Formally:
+  \begin{align*}
+    \holconst{linear}\;p \implies &\holconst{rel}\;(\holconst{rel}\;(\lambda v\; t.\; t = \holconst{value\_to\_sterm}\;v))\;\sigma_1\;\sigma_2 \\
+    \text{where } &\sigma_1 = \holconst{vmatch}\;(\holconst{mk\_pat}\;p)\;v \\
+    &\sigma_2 = \holconst{match}\;p\;( \holconst{value\_to\_sterm}\;v)
+  \end{align*}
+\end{lemma}
+
+\noindent
+The proof first establishes a correspondence between \holconst{match'} and \holconst{vmatch} and then composes the result with \cref{thm:terms:types:pat:eq}.
+
+Having introduced proper patterns and matching of values with patterns, \cref{thm:terms:algebra:preds:match} can be adapted accordingly in the context of the predicate locale (\cref{fig:terms:types:value:pred}):
+%
+\begin{lemma}
+  If a value $v$ for which $\holconst{pred}\;v$ holds matches a pattern with resulting environment $\sigma$, then \holconst{pred} holds for the range of $\sigma$.
+\end{lemma}
+
+\noindent
+Similarly to §\ref{sec:terms:algebra:thy:preds}, the relation locale (\cref{fig:terms:types:value:rel}) admits relational results on matching.
+For example, the equivalent to \cref{thm:terms:algebra:match-rel} is:
+%
+\begin{lemma}
+  For all structural value relations $Q$:
+  If $Q\;t_1\;t_2$, then
+  \[ \holconst{rel}\;\allowbreak(\holconst{rel}\;Q)\allowbreak\;(\holconst{vmatch}\;p\;t_1)\;(\holconst{vmatch}\;p\;t_2) \]
+\end{lemma}

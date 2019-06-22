@@ -1,0 +1,151 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Big-step semantics}
+\label{sec:intermediate:bigstep}
+
+\begin{code}[t]
+  \[
+    \inferrule*[left=Const]{(\mathit{name}, \mathit{rhs}) \in \rs}{\seval{\rs}{\sigma}{\holconst{Sconst}\;\mathit{name}}{\mathit{rhs}}}\quad
+    \inferrule*[left=Var]{\sigma\;\mathit{name} = \holconst{Some}\;v}{\seval{\rs}{\sigma}{\holconst{Svar}\;\mathit{name}}{v}}
+  \]
+  \[
+    \inferrule*[left=Abs]{ }{\seval\rs\sigma{\Lambda\;\cs}{\Lambda \left[ (\mathit{pat}, \holconst{subst}\;(\sigma - \holconst{frees}\;\mathit{pat})\;t \mid (\mathit{pat}, t) \leftarrow cs \right]}}
+  \]
+  \[
+    \inferrule*[left=Comb]{
+      \seval\rs\sigma{t}{\Lambda\;\cs} \\
+      \seval\rs\sigma{u}{u'} \\
+      \holconst{find\_match}\;\cs\;u' = \holconst{Some}\;(\sigma', \mathit{rhs}) \\
+      \seval\rs{\envadd{\sigma}{\sigma'}}{\mathit{rhs}}{v}
+    }{\seval\rs\sigma{\app t u}{v}}
+  \]
+  \[
+    \inferrule*[left=Constr]{
+      \mathit{name} \in \holconst{C} \\
+      \seval\rs\sigma{t_1}{u_1} \\
+      \cdots \\
+      \seval\rs\sigma{t_n}{u_n}
+    }{\seval\rs\sigma{\holconst{Sconst}\;\mathit{name}\mathbin\$t_1\mathbin\$\ldots\mathbin\$t_n}{\holconst{Sconst}\;\mathit{name}\mathbin\$u_1\mathbin\$\ldots\mathbin\$u_n}}
+  \]
+  \caption{Big-step semantics for \holtype{sterm}}
+  \label{code:intermediate:bigstep}
+\end{code}
+
+This big-step semantics for \holtype{sterm} is not a compiler phase but moves towards the desired evaluation semantics.
+In this step, I reuse the \holconst{sterm} type for evaluation results, instead of evaluating to the separate type \holtype{value} (§\ref{sec:terms:types:value}).
+This means that I can ignore environment capture in closures for now.
+
+All previous $\longrightarrow$ relations were parametrized by a rule set.
+Now the big-step predicate is of the form $\seval{\rs}{\sigma}{t}{t'}$ where $\holtypejudgement{\sigma}{\holtype{string}\rightharpoonup\holtype{sterm}}$ is a variable environment.
+The intended invariant is that evaluated terms are closed when $\sigma$ is closed.
+
+This semantics also requires the distinction between constructors and defined constants, which I have already touched on in §\ref{sec:deep:operation}.
+If \holconst{c} is a constructor, the term $\embed{\holconst{c}\;t_1\;\ldots\;t_n}$ is evaluated to $\embed{\holconst{c}\;t'_1\;\ldots\;t'_n}$ where the $t_i'$ are the results of evaluating the $t_i$.
+This imposes additional restrictions on the rule set:
+A constant must not be a constructor and a definition at the same time.
+The semantics is parametrized on the set \holconst{C} of all data constructors via the \holconst{constructors} locale (\cref{code:deep:constructors}).
+
+The full set of rules is shown in \cref{code:intermediate:bigstep}.
+They deserve a short explanation:
+
+\begin{semantics}
+  \item[Const]
+    Constants are retrieved from the rule set \rs.
+  \item[Var]
+    Variables are retrieved from the environment $\sigma$.
+  \item[Abs]
+    In order to achieve the intended invariant, abstractions are evaluated to their fully substituted form.
+    Observe the obvious similarity between this rule and the definition of substitution for \holtype{sterm} (§\ref{sec:terms:types:sterm}).
+  \item[Comb]
+    Function application $\app t u$ first requires evaluation of $t$ into an abstraction $\Lambda\;\cs$ and evaluation of $u$ into an arbitrary term $u'$.
+    Afterwards, a clause matching $u'$ in $\cs$ is searched, which produces a local variable environment $\sigma'$, possibly overwriting existing variables in $\sigma$.
+    Finally, the right-hand side of the clause is evaluated with the combined global and local variable environment.
+  \item[Constr]
+    For a constructor application $\embed{\holconst{c}\;t_1\;\ldots}$, evaluate all $t_i$.
+\end{semantics}
+
+\begin{lemma}[Closedness invariant]
+  If $\sigma$ is closed, $\holconst{frees}\;t \subseteq \holconst{dom}\;\sigma$ and $\seval{\rs}{\sigma}{t}{t'}$, then $t'$ is closed.
+\end{lemma}
+
+\noindent
+Because of the unchanged term type in this and the previous semantics, the generalized correctness property is easily phrased:
+
+\begin{lemma}
+  For any closed environment $\sigma$ with $\holconst{frees}\;t \subseteq \holconst{dom}\;\sigma$,
+  \[ \seval\rs{\sigma}{t}{u} \implies \rewrite*{\rs}{\holconst{subst}\;\sigma\;t}{u} \]
+\end{lemma}
+
+\noindent
+This can be proved easily by rule induction on the big-step semantics.
+The correctness theorem can be obtained by instantiating $\sigma = []$:
+
+\begin{theorem}[Correctness]
+  \label{thm:intermediate:bigstep}
+  $\seval\rs{[]}{t}{u} \wedge \holconst{closed}\;t \implies \rewrite*{\rs}{t}{u}$
+\end{theorem}
+
+\noindent
+The semantics also satisfies some further properties.
+Even though they are only required in the subsequent proofs, I will describe the statements and their proofs here, because they frequently refer to the rules of the semantics.
+
+\begin{lemma}[Idempotence]\label{thm:intermediate:bigstep:idem}
+  For all closed term-values (§\ref{sec:terms:types:value:conv}), big-step evaluation is idempotent.
+  Formally: $\seval\rs\sigma t t$.
+\end{lemma}
+
+\begin{proof}
+  By rule induction on term-values.
+  The \textsc{Abs} case requires \cref{thm:terms:algebra:subst-closed}.
+\end{proof}
+
+\begin{lemma}[Pre-substitution]\label{thm:intermediate:bigstep:pre}
+  Let $\sigma$ be a closed term-value environment.
+  Big-step evaluation of a term $t$ with $\sigma$ does not change if $t$ is first substituted with a environment $\sigma' \subseteq \sigma$.
+  Formally:
+  \[\seval\rs\sigma t t' \implies \seval\rs\sigma{\holconst{subst}\;\sigma'\;t}t'\]
+\end{lemma}
+
+\begin{proof}
+  By rule induction on the semantics.
+
+  \begin{induction}
+    \item[Var]
+      If the variable $\mathit{name}$ is defined in $\sigma'$, then substitution of $\holconst{Svar}\;\mathit{name}$ yields $\sigma'\;\mathit{name}$, which then will be evaluated again.
+      But since $\sigma'$ is a term-value environment, \cref{thm:intermediate:bigstep:idem} guarantees that it evaluates to itself.
+    \item[Const]
+      Substituting a constant results in the same constant, therefore the induction hypothesis immediately applies.
+    \item[Abs]
+      It must hold that
+      \[
+        \seval\rs\sigma{\holconst{subst}\;\sigma'\;(\Lambda\;\cs)}{\Lambda \left[ (\mathit{pat}, \holconst{subst}\;(\sigma - \holconst{frees}\;\mathit{pat})\;t \mid (\mathit{pat}, t) \leftarrow cs \right]}
+      \]
+
+      This can be proved in two steps:
+      \begin{enumerate}
+        \item
+          By applying the \textsc{Abs} rule and unfolding the definition of \holconst{subst}, obtain
+          \[\seval\rs\sigma{\holconst{subst}\;\sigma'\;(\Lambda\;\cs)}{\holconst{subst}\;\sigma\;(\holconst{subst}\;\sigma'\;(\Lambda\;cs))}\]
+        \item
+          Generalize the necessary equality
+          \[\holconst{subst}\;\sigma\;(\holconst{subst}\;\sigma'\;(\Lambda\;cs)) = \holconst{subst}\;\sigma\;(\Lambda\;\cs)\]
+          to arbitrary terms.
+          This follows from \cref{thm:terms:algebra:subst-cong,thm:terms:algebra:subst-indep} and the representation of the larger environment $\sigma$ as $\envadd\sigma\sigma'$.
+      \end{enumerate}
+  \end{induction}
+
+  \noindent
+  The other cases are uninteresting.
+\end{proof}
+
+\begin{lemma}[Environment coincidence]\label{thm:intermediate:bigstep:agree}
+  Let $\sigma, \sigma'$ be two closed environments who coincide on the set $S$. Formally:
+  \[ S\subseteq \holconst{dom}\;\sigma \wedge S\subseteq \holconst{dom}\;\sigma' \wedge \forall a \in S.\;\sigma\;a = \sigma'\;a \]
+  Then, if $\holconst{frees}\;t \subseteq S$, evaluation in both environments yields the same result:
+  \[\seval\rs\sigma{t}{u} \biimplies \seval\rs{\sigma'}{t}{u} \]
+\end{lemma}
+
+\noindent
+The lemma itself is obvious and even desirable for the semantics of a programming language.
+Its proof is mainly technical; it requires set-theoretic reasoning about domains of mappings.

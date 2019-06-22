@@ -1,0 +1,190 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Limitations}
+\label{sec:preproc:limitations}
+
+This section discusses the limitations of the preprocessing phase.
+Here, \emph{limitation} can either mean that a particular step in preprocessing fails to work on a particular set of definitions, or that it produces a result that is less general than expected.
+Most limitations can be avoided with specific workarounds.
+
+\subsection{Specifiedness}
+
+A particularly thorny issue is presented by functions that return other functions.
+While \emph{currying} itself is a common idiom in functional programming, manipulation of partially applied functions would require a non-trivial data flow analysis.
+As a synthetic example, consider the expression $\holtypejudgement{\holconst{map}\;(\holconst{div})\;\mathit{xs}}{(\holtype{nat} \Rightarrow \holtype{nat})\;\holtype{list}}$, with \holconst{div} being the division operator on natural numbers.
+Clearly, the expression is fully specified for all $\mathit{xs}$, but its resulting list of functions is not:
+Passing in $0$ to any of the resulting functions yields unspecified behaviour, or at run-time in a target language, throw an exception.
+
+The underlying problem is that the congruence rule for \holconst{map} can only be used to extract side conditions when the return type of the function that is passed to it is not itself a function type.
+More formally, the heuristic requires that no type variables are instantiated with a function type in order to work correctly.
+
+A similar situation arises in practice in the commonly used \holconst{show} derivation framework by Sternagel and Thiemann~\cite{sternagel2014show}.
+They employ Hughes' difference list representation of strings~\cite{hughes1986dlist}.
+Luckily, all these functions are fully specified, i.e.\ the side condition is always true.
+
+\begin{code}[t]
+  \begin{subcode}{\linewidth}
+    \begin{lstlisting}
+datatype $\alpha$ list = Cons $\alpha$ ($\alpha$ list) | Nil
+
+fun append :: $\alpha$ list $\Rightarrow$ $\alpha$ list $\Rightarrow$ $\alpha$ list where
+append Nil //ys// = //ys//
+append (Cons //x// //xs//) //ys// = Cons //x// (append //xs// //ys//)
+
+fun Snoc :: $\alpha$ list $\Rightarrow$ $\alpha$ $\Rightarrow$ $\alpha$ list where
+Snoc //xs// //x// = append //xs// [//x//]
+
+code_datatype Nil Snoc\end{lstlisting}
+    \caption{Full definition of a ``cons list''}
+  \end{subcode}
+  \begin{subcode}{\linewidth}
+    \begin{lstlisting}[language=ML]
+datatype 'a list = Snoc of 'a list * 'a | Nil;\end{lstlisting}
+    \caption{Generated datatype definition in Standard ML}
+  \end{subcode}
+  \begin{subcode}{\linewidth}
+    \begin{lstlisting}
+lemma [code]:
+  append //xs// Nil = //xs//
+  append //xs// (Snoc //ys// //y//) = Snoc (append //xs// //ys//) //y//
+(* proof *)\end{lstlisting}
+    \caption{Defining equations for \holconst{append}}
+  \end{subcode}
+
+  \caption{Adapting a datatype to a different representation}
+  \label{code:snoc}
+\end{code}
+
+\subsection{Patterns in function definitions}
+
+The \holcommand{function} package, by default, allows only function definitions where the left-hand side matches on constructors.
+Consider as an example treating list as ``snoc lists'' instead of ``cons lists'', i.e., a pair of \emph{init} and \emph{last} instead of \emph{head} and \emph{tail}.
+A complete example is given in \cref{code:snoc}.
+It first introduces the datatype for cons lists and defines the \holconst{append} and \holconst{Snoc} functions.
+Then, it instructs the code generator to use \holconst{Nil} and \holconst{Snoc} in the target language representation.
+
+However, the code generator cannot export code for the \holconst{append} function, because it is defined in terms of \holconst{Cons}, and aborts with an error message that \holconst{Cons} is not a constructor on the left-hand side of the defining equation.
+
+To fix this, \cref{code:snoc} demonstrates how to add defining equations for \holconst{append} that are defined in terms of \holconst{Snoc}.
+But now the \holcommand{function} package would not accept such a definition of \holconst{append}, because while \holconst{Snoc} is a constructor as far as the code generator is concerned, it is still not a constructor as far as the \holcommand{datatype} package is concerned.
+The key problem is that both subsystems may have diverging notions of exactly which constructors a datatype is comprised of.
+
+The workaround for this problem is that it is possible to use the \holcommand{function} package in a mode which allows to use arbitrary patterns on the left-hand side of a defining equation.
+It is only a workaround because the package demands some additional proofs (exhaustiveness, well-definedness) that are tedious to do by hand and impossible to automate in general.
+
+For that reason, any type adaptations, including data refinement \cite{haftmann2013refinement}, are not supported by this work.
+
+\subsection{Pattern compatibility}\index{pattern compatibility}
+
+The classic example for a set of equations with patterns that are difficult to deal with is the \holconst{diagonal} function~\cite{slind1999terminating,peytonjones1987implementation}:
+%
+\begin{lstlisting}[language=Isabelle]
+fun diagonal :: bool $\Rightarrow$ bool $\Rightarrow$ bool $\Rightarrow$ nat where
+diagonal //x// True False = 1
+diagonal False //y// True = 2
+diagonal True False //z// = 3
+\end{lstlisting}
+%
+The difficulty arises from the overlapping patterns.
+There is no possible renaming of variables such that this set of equations satisfies the pattern compatibility constraint.
+Consequently, the preprocessing step will produce an error message.
+
+The workaround is to instantiate the first two equations with $\{\holconst{True}, \holconst{False}\}$, which can be achieved with modest effort in Isabelle:
+%
+\begin{lstlisting}[language=Isabelle]
+diagonal True True False = 1
+diagonal False True False = 1
+diagonal False True True = 2
+diagonal False False True = 2
+diagonal True False //z// = 3
+\end{lstlisting}
+%
+The process could also be automated, but because it is potentially an expensive operation, the user has the choice how to deal with the situation.
+
+\subsection{Congruence rules with constraints}
+
+Consider a variant of the \holconst{sum\_list} function that first applies a function before summing up the values:
+%
+\begin{lstlisting}
+fun sum_by :: ($\alpha$ $\Rightarrow$ $\beta$::{plus,zero}) $\Rightarrow$ $\alpha$ by $\Rightarrow$ $\beta$ where
+sum_by _ [] = //0//
+sum_by //f// (//x// # //xs//) = //f// //x// + sum_by //f// //xs//
+\end{lstlisting}
+%
+In order to use this function in a higher-order recursion, a congruence rule needs to be proved.
+The resulting rule is very similar to the congruence rule of \holconst{map}:
+\[
+  \inferrule*{
+    \forall x.\; x \in \holconst{set}\;\mathit{xs} \implies f\;x = g\;x\\
+    \mathit{xs} = \mathit{ys}
+  }{\holconst{sum\_by}\;f\;\mathit{xs} = \holconst{sum\_by}\;g\;\mathit{ys}}
+\]
+%
+Since \holconst{sum\_by} has sort constraints, the dictionary construction will introduce additional parameters.
+
+Now suppose that another function \holconst{h} uses \holconst{sum\_by}.
+Dictionary construction replaces occurrences of \holconst{sum\_by} in \holconst{h} by \holconst{sum\_by'}.
+But \holconst{sum\_by'} has no congruence rule, which means that the termination proof of \holconst{h} must fail.
+
+Besides the termination heuristic, I have also implemented a heuristic method to transfer congruence rules to the new constants.
+The \holcommand{function} package only accepts unconditional congruence rules; consequently, this only works when function equipped with a congruence rule is fully specified and has no visible sort constraints.
+
+For that reason, a function like \holconst{sum\_by} cannot be used as a higher-order recursion combinator.
+Instead, it needs to be split into two parts: mapping and summing.
+This can be registered in the code generator as follows:
+%
+\begin{lstlisting}
+lemma sum_by[code_unfold]: sum_by //f// = sum_list $\circ$ sum_by //f//
+(* proof *)
+\end{lstlisting}
+
+\subsection{Preservation of termination}
+The following pathological example exhibits the problem that some functions cannot be proved to terminate after elimination of sort constraints:
+%
+\begin{lstlisting}[language=Isabelle]
+function sum_set :: $\alpha$::{finite,comm_monoid_add,linorder} set $\Rightarrow$ $\alpha$ where
+sum_set //S// = (if //S// = {} then $0$ else Min //S// + sum_set (//S// - {Min //S//}))
+\end{lstlisting}
+%
+This function, analogously to \holconst{sum\_list}, should compute the sum of a set.
+It can only be proved terminating because of the sort constraints:
+otherwise, there may be infinitely many elements in $S$, no well-defined minimum element, or the result may be depending on the order.
+With the constraint, the termination relation is the cardinality of the set which decreases with each recursive call.
+
+However, the termination heuristics cannot cope with this example.
+The dictionary construction removes all sort constraints from the type variables; instead introducing value parameters.
+The dictionary type for \holclass{finite} would be isomorphic to \holtype{unit}, because the class does not have any parameters.
+But now, the new termination relation cannot be simulated by the old one:
+it has to deal with arbitrary, possibly infinite sets.
+
+Fortunately, function definitions like this are rare.
+If necessary, they can be replaced by a recursion on lists as follows:
+%
+\begin{lstlisting}[language=Isabelle]
+lemma sum_set_set[code_unfold]: sum_set (set //xs//) = sum_list (remdups //xs//)
+(* proof *)
+\end{lstlisting}
+%
+This replaces all occurrences of \holconst{sum\_set} applied to a finite set of elements $\mathit{xs}$ by an application of \holconst{sum\_list} (after removing duplicate elements).
+After the automatic preprocessing phase of the code generator, no traces of recursion through sets will be left.
+This pattern of replacing logical recursion on sets by executable recursion on lists is common in Isabelle's standard libraries.
+
+Furthermore, the heuristic cannot prove all function definitions that are still terminating after class elimination to be terminating.
+The following circumstances prevent a termination proof to be ported:
+\begin{itemize}
+  \item
+    Recursive calls that receive the result of another recursive call as an argument.
+    A classic example is \emph{McCarthy's 91 function} \cite{manna1970properties}, which is defined as follows:
+      \[ \holconst{f91}\;n = (\holkeyword{if}\; 100 < n\; \holkeyword{then}\; n - 10 \;\holkeyword{else}\; \holconst{f91}\; (\holconst{f91}\; (n + 11))) \]
+    The termination proof requires an additional lemma that gives an estimate on the return value.
+    Krauss' \holcommand{function} package can deal with this specification \cite[§2.7.2]{krauss2009fun}.
+    My heuristic cannot, because the generated termination condition mentions the function itself.
+  \item
+    Functions with at least one polymorphic parameter that is not a suitable type constructor.
+    The termination heuristic will ask the \holcommand{datatype} package to deliver a map function from the new relation to the old relation, which is impossible in some cases.
+\end{itemize}
+
+\noindent
+When the heuristic fails, the system falls back to an automatic termination proof using the lexicographic order method.
+Presently, for technical reasons, it is impossible to give a manual proof when the automatic proof also fails.

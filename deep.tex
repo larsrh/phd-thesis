@@ -1,0 +1,17 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\noindent
+The \keyword{deep embedding} phase happens after preprocessing (§\ref{sec:preproc}) and is special:
+whereas preprocessing stays entirely within the realm of ML to alter (or derive new) HOL definitions and the compiler (§\ref{sec:compiler}) stays entirely within the realm of term languages modelled in Isabelle, deep embedding lifts definitions into a model.
+It bridges the gap between the ML and the HOL world.
+
+Starting with a HOL definition, this phase constructs a \emph{reified}\index{reification} definition in the deeply embedded term language given in \cref{code:background:rewriting:term}.
+This term language corresponds closely to the \texttt{term} data type of Isabelle's implementation (using de~Bruijn indices \cite{debruijn1972lambda}), but without types and schematic variables.
+To establish a formal connection between the original and the reified definitions, a ``family of relations'' is used, ``defined by induction on types'' \cite{tait1967interpretations}.
+This concept of a \emph{logical relation} is well-understood in literature \cite{hermida2014logical,tait1967interpretations} and can be nicely implemented in HOL using type classes.
+
+This compiler phase can be structured into three parts:
+the mapping -- implemented in ML -- between raw Isabelle terms and deeply-embedded \holtype{term}s (§\ref{sec:deep:operation}),
+the HOL relations that certify correspondence between both representations (§\ref{sec:deep:rel}),
+and the proof tactics -- also implemented in ML -- that establish theorems about concrete mappings (§\ref{sec:deep:proofs}).

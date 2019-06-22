@@ -1,0 +1,51 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Related work}
+
+\paragraph{Term rewriting}
+The field of term rewriting is a rich area of research.
+For the purpose of this thesis, I would like to restrict the analysis of related work to Isabelle formalizations.
+Most notably in this space is the \isafor/\ceta\ project: ``An Isabelle/HOL Formalization of Rewriting for Certified Tool Assertions''.%
+\footnote{\url{http://cl-informatik.uibk.ac.at/isafor/}}
+The project consists of multiple modules, some of which are available in the Archive of Formal Proofs:
+
+\begin{description}
+  \item[Abstract Rewriting]
+    Sternagel and Thiemann~\cite{sternagel2010rewriting} give abstract characterizations of term rewriting systems, in particular definitions of properties like completeness and normalization.
+    There is no fixed type of terms that are prescribed for rewriting; all definitions operate on arbitrary relations.
+  \item[First-Order Terms]
+    The same authors~\cite{sternagel2018terms} provide a general definition of first-order terms, i.e., composed of variables and function applications.
+    Based on this, they introduce matching and unification algorithms.
+  \item[Z Property]
+    Felgenhauer \etal~\cite{felgenhauer2016z} formalized the \emph{Z property} based on work by Dehornoy and van Oostrom~\cite{dehornoy2008z}.
+    As an example application, they prove that lambda calculus has the Church--Rosser property~\cite{church1936conversion}.
+    Unfortunately, this formalization of higher-order terms does not include the notion of \emph{constants}.
+\end{description}
+
+\paragraph{Term algebras}
+Schmidt-Schauß and Siekmann~\cite{schmidt1988unification} discuss the concept of \emph{unification algebras}.
+They generalize terms to \emph{objects} and substitutions to \emph{mappings}.
+A unification problem can be rephrased to finding a mapping such that a set of objects are mapped to the same object.
+The advantage of this generalization is that other -- superficially unrelated -- problems like solving algebraic equations or querying logic programs can be seen as unification problems.
+
+In particular, the authors note that among the similarities of such problems are that ``objects [have] variables'' whose ``names do not matter'' and ``there exists an operation like substituting objects into variables''~\cite[§1]{schmidt1988unification}.
+The major difference between my formalization in §\ref{sec:terms:algebra} and the work by Schmidt-Schauß and Siekmann is that I use concrete types for variables and mappings.
+Otherwise, some similarities to here can be found.
+
+Eder~\cite{eder1985properties} discusses properties of substitutions with a special focus on a partial ordering between substitutions.
+However, Eder constructs and uses a concrete type of first-order terms, similarly to Sternagel and Thiemann~\cite{sternagel2018terms}.
+
+Williams~\cite{williams1991instantiation} defines substitutions as elements in a monoid.
+In this setting, instantiations can be represented as \emph{monoid actions}.
+Williams then proceeds to define -- for arbitrary sets of terms and variables -- the notion of \emph{instantiation systems,} heavily drawing on notation from Schmidt-Schauß and Siekmann.
+Some of the presented axioms~\cite[§2]{williams1991instantiation} are also present in my formalization.
+Consequently, generic theorems can be derived from those axioms:
+for example \cref{thm:terms:algebra:disjoint},\footnote{Corollary 3.8B: $t\sigma = t$, if $\mathrm{var}(t) \cap \mathrm{dom}(a) = \emptyset$}
+\cref{thm:terms:algebra:subst-restrict},\footnote{Corollary 3.8A: $t\sigma = t(\sigma|\mathrm{var}(t))$} or
+\cref{thm:terms:algebra:subst-twice}.\footnote{Corollary 3.8D: $\sigma + \tau = \sigma \tau$, if $\mathrm{cdm}(\sigma) \cap \mathrm{dom}(\tau) = \emptyset$}
+
+\paragraph{Higher-order terms}
+Blanchette \etal\ have formalized $\lambda$-free higher-order terms in Isabelle~\cite{becker2016lambda,blanchette2016lambda}.
+Their main application are term orders that are used in automated theorem proving.
+The formalization is relevant insofar as their term type can be made an instance of the generic \holtype{term} class.\thyrefmy{CakeML_Codegen}{Lambda_Free_Compat}

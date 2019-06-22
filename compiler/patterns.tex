@@ -1,0 +1,514 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Explicit pattern matching}
+\label{sec:intermediate:elim}
+
+In this step, rule sets are transformed from implicit to explicit pattern matching (§\ref{sec:terms:types:pterm}).
+This is an iterative algorithm that requires two fundamental invariants:
+all defining equations of one function must
+\begin{enumerate}
+  \item have the same number of parameters (guaranteed by the \holcommand{function} command during preprocessing) and
+  \item be pattern-compatible (\cref{def:preproc:compatibility})
+\end{enumerate}
+If either invariant is violated, the result of an iteration is unspecified; therefore, they form additional assumptions (§\ref{sec:intermediate:wellformed}).
+
+Defining equations after elimination of implicit patterns will have the form $\embed{\holconst{f}} = \Lambda\;\C$, where \C{} is a set of clauses.
+The right-hand side contains $n$ nested abstractions, where $n$ is the number of parameters of the defining equations of \holconst{f}.
+
+The implementation strategy requires successive elimination of a single parameter from right to left, in a similar fashion as Slind's pattern matching compiler \cite[§3.3.1]{slind1999terminating}.
+There is an alternative implementation that will be discussed in §\ref{sec:intermediate:elim:discussion}.
+Explanation of the semantics in this phase is dependent upon understanding of the elimination procedure, which is why I defer this to §\ref{sec:intermediate:elim:impl}.
+
+The running example in this section is the \holconst{map} function from §\ref{sec:deep:operation}.
+It has arity 2.
+I omit the brackets \embed{} for brevity.
+Recall its definition:
+\[
+  \begin{array}{lllcl}
+    \holconst{map}&f&[] &=& [] \\
+    \holconst{map}&f&(x \cons \mathit{xs}) &=& f\;x \cons \holconst{map}\;f\;\mathit{xs}
+  \end{array}
+\]
+%
+First, the list parameter is eliminated:
+%
+\begin{align*}
+  \holconst{map}\;f = \lambda\; &[] \Rightarrow [] \\
+  |\;&x \cons \mathit{xs} \Rightarrow f\;x \cons \holconst{map}\;f\;\mathit{xs}
+\end{align*}
+%
+Finally, the function parameter is eliminated:
+%
+\begin{align*}
+  \holconst{map} = \lambda\; f \Rightarrow \big(\lambda\; &[] \Rightarrow [] \\
+  |\;&x \cons \mathit{xs} \Rightarrow f\;x \cons \holconst{map}\;f\;\mathit{xs}\big)
+\end{align*}
+%
+This final equation has arity zero and is defined by a twice-nested abstraction.
+
+From this example, it becomes obvious why the first invariant has to hold:
+the elimination procedure would get stuck for jagged arrays.
+The second invariant is more subtle.
+Consider an equivalent definition of \holconst{map}, where the function parameter has a different name in the second equation:
+%
+\[
+  \begin{array}{lllcl}
+    \holconst{map}&f&[] &=& [] \\
+    \holconst{map}&g&(x \cons \mathit{xs}) &=& g\;x \cons \holconst{map}\;g\;\mathit{xs}
+  \end{array}
+\]
+%
+Through elimination, this would turn into:
+%
+\begin{align*}
+\holconst{map} = \lambda\; &f \Rightarrow \big(\lambda\; [] \Rightarrow []\big) \\
+|\;&g \Rightarrow \big(\lambda\; x \cons xs \Rightarrow f\;x \cons \holconst{map}\;f\;xs\big)
+\end{align*}
+%
+Even though the original equations were non-overlapping, the resulting abstraction has overlapping patterns.
+Slind observed a similar problem \cite[§3.3.2]{slind1999terminating} in his algorithm.
+Therefore, he only permits \emph{uniform} equations, as defined by Wadler \cite[§5.5]{peytonjones1987implementation}.
+In the formalization, I am able to give a formal characterization of the requirements as a computable function on pairs of patterns (§\ref{sec:terms:algebra:thy:matching}).
+This compatibility constraint ensures that any two overlapping patterns at the same parameter position are equal and are thus appropriately grouped together in the elimination procedure.
+
+While this rules out some theoretically possible pattern combinations (see also §\ref{sec:preproc:limitations}), in practice, I have not found this to be a problem.
+If a function's parameters cannot be renamed accordingly, users can transform a set of equations into a single equation using \holkeyword{case} combinators with the \holcommand{case\_of\_simps} command by Noschinski and Klein.\thyrefdist{HOL-Library}{Simps_Case_Conv}
+
+\subsection{Elimination procedure}
+\label{sec:intermediate:elim:proc}
+
+The elimination procedure can be described as an iterative matrix transformation.
+Functions are processed one at a time.
+In a similar fashion as Slind's pattern matching compiler \cite[§3.3.1]{slind1999terminating}, I view the set of defining equations of \holconst{c} as a matrix where each row represents an equation.
+%
+\[
+  \begin{array}{lccl}
+    \holconst{c} & p_{1,1}\;\ldots\;p_{1,n} &=& \mathit{rhs_1} \\
+    \holconst{c} & p_{2,1}\;\ldots\;p_{2,n} &=& \mathit{rhs_2} \\
+    &&\vdots& \\
+    \holconst{c} & p_{m,1}\;\ldots\;p_{m,n} &=& \mathit{rhs_m}
+  \end{array}
+  \;
+  \rightsquigarrow
+  \quad
+  \left(
+    \begin{array}{cccc|c}
+    p_{1,1} & p_{1,2} & \cdots & p_{1,n} & \mathit{rhs}_1 \\
+    p_{2,1} & p_{2,2} & \cdots & p_{2,n} & \mathit{rhs}_2 \\
+    \vdots & \vdots & \ddots & \vdots & \vdots \\
+    p_{m,1} & p_{m,2} & \cdots & p_{m,n} & \mathit{rhs}_m
+    \end{array}
+  \right)
+\]
+%
+\begin{definition}[Arity]
+  The \keyword{arity} of a function is the unique number of patterns in each of its defining equations, if it exists, or unspecified otherwise.
+  Two equations are \emph{arity-compatible}\index{arity compatibility} if they define different functions or have the same number of patterns.
+\end{definition}
+
+\noindent
+Applied to the above example, the arity of \holconst{c} is $n$.
+
+In each step, the equations are grouped by the initial $n-1$ patterns (the \emph{prefix}).
+More formally, I treat a row in the matrix as an $(n+1)$-tuple $(p_{i,1}, \ldots, p_{i,n}, \mathit{rhs}_i)$ and define an equivalence relation $\equiv_p$ such that
+%
+\[ (p_{i,1}, \ldots, p_{i,n}, \mathit{rhs}_i) \equiv_p (p_{j,1}, \ldots, p_{j,n}, \mathit{rhs}_j) \biimplies (p_{i,1}, \ldots, p_{i,n-1}) = (p_{j,1}, \ldots, p_{j,n-1}) \]
+%
+The new matrix is constructed from the set of equivalence classes.
+It consists of $n$ columns and one row per equivalence class.
+The first $n-1$ columns contain the unique $p_{i,1},\ldots,p_{i,n-1}$, whereas the last column is an abstraction with the set $S_i$ of all $(p_{k,n}, \mathit{rhs}_k)$ in the equivalence class as the set of clauses.
+%
+\[
+  \left(
+    \begin{array}{cccc|c}
+    p'_{1,1} & p'_{1,2} & \cdots & p'_{1,n-1} & \Lambda\;S_1 \\
+    p'_{2,1} & p'_{2,2} & \cdots & p'_{2,n-1} & \Lambda\;S_2 \\
+    \vdots & \vdots & \ddots & \vdots & \vdots \\
+    p'_{m',1} & p'_{m',2} & \cdots & p'_{m',n-1} & \Lambda\;S_{m'}
+    \end{array}
+  \right)
+\]
+
+\begin{lemma}[Invariant]
+  Given a set of arity- and pattern-compatible equations, the elimination procedure produces another set of arity- and pattern-compatible equations.
+\end{lemma}
+
+\begin{proof}
+  Consider a set of equations with the same head \holconst{c}.
+  Assume arity of \holconst{c} is nonzero.
+  \begin{enumerate}
+    \item
+      Obvious from the matrix construction.
+    \item
+      Let $\holtypejudgement{\R_{\holconst{c}}}{(\holtype{term}\;\holtype{list} \times \holtype{pterm})\;\holtype{set}}$ be all equations for \holconst{c}.
+      Also, let $\R_{\holconst{c}}'$ be the set after a single elimination.
+      To establish pattern compatibility of a set, pick any two equations $(\mathit{ps}_1, \mathit{rhs}_1)$ and $(\mathit{ps}_2, \mathit{rhs}_2)$ in $\R_{\holconst{c}}'$ and prove their pattern compatibility.
+      Consider the origin of these two equations:
+      There must be (at least) one equation $(\mathit{ps}_i \append [p_i'], \mathit{rhs}_i') \in \R_{\holconst{c}}$ that gave rise to $(\mathit{ps}_1, \mathit{rhs}_1)$ for $i \in \{1, 2\}$.
+      Consequently, using the invariant for $\R_\holconst{c}$, $\mathit{ps}_1 \append [p_1']$ and $\mathit{ps}_2 \append [p_2']$ must be compatible.
+
+      It remains to be proved that $\mathit{ps}_1$ and $\mathit{ps}_2$ are compatible.
+      This follows directly from the definition of \holconst{rev\_accum\_rel} (§\ref{sec:terms:algebra:thy:matching}).
+      \qedhere
+  \end{enumerate}
+\end{proof}
+
+\begin{lemma}[Termination]
+  For each function in a rule set \R, its arity is zero or decreases by one after a single elimination step.
+\end{lemma}
+
+\begin{corollary}\label{thm:intermediate:elim:iter}
+  Let \holconst{c} be the function with the maximum arity $n$ in a rule set \R.
+  Eliminating patterns in $\R$ for $n$ times yields a rule set $\R'$ where each function has arity zero.
+\end{corollary}
+
+\subsection{Compilation}
+\label{sec:intermediate:elim:impl}
+
+\begin{code}[t]
+  \begin{subcode}{\linewidth}
+    \[
+      \inferrule*[left=Step]{(\mathit{name}, \C) \in \R \\ ([p_1, \ldots, p_n], \mathit{rhs}) \in C \\ \holconst{match}\;(\holconst{Pconst}\;\mathit{name}\mathbin\$p_1\mathbin\$\ldots\mathbin\$p_n)\;t = \holconst{Some}\;\sigma}{\rewrite{\R}{t}{\holconst{subst}\;\sigma\;\mathit{rhs}}}
+    \]
+    \[
+      \inferrule*[left=Beta]{(\mathit{pat}, \mathit{rhs}) \in \C \\ \holconst{match}\;\mathit{pat}\;t = \holconst{Some}\;\sigma \\ \holconst{closed}\;t}{\rewrite{\R}{\app{(\Lambda\; \C)}{t}}{\holconst{subst}\;\sigma\;\mathit{rhs}}}
+    \]
+    \[
+      \inferrule*[left=Fun]{\rewrite{\R}{t}{t'}}{\rewrite{\R}{\app t u}{\app{t'}{u}}}
+      \quad
+      \inferrule*[left=Arg]{\rewrite{\R}{u}{u'}}{\rewrite{\R}{\app t u}{\app{t}{u'}}}
+    \]
+    \caption{Combined implicit and explicit pattern matching}
+  \end{subcode}
+  \vspace{1em}
+
+  \begin{subcode}{\linewidth}
+    \[
+      \inferrule*[left=Step']{(\mathit{name}, \mathit{rhs}) \in \R}{\rewrite{\R}{\holconst{Pconst}\;\mathit{name}}{\mathit{rhs}}}
+    \]
+    \caption{Modified \textsc{Step} rule for explicit-only pattern matching}
+    \label{code:intermediate:elim:explicit}
+  \end{subcode}
+
+  \caption{Small-step semantics with pattern matching}
+  \label{code:intermediate:elim}
+\end{code}
+
+After transformation to \holtype{nterm}, equations are represented as a tuple $\holtype{term} \times \holtype{nterm}$.
+But recall from \cref{fig:intermediate} that the type of $\R$ in this phase is $(\holtype{string} \times (\holtype{term}\;\holtype{list} \times \holtype{pterm})\;\holtype{set})\;\holtype{set}$.
+The full compilation goes through multiple sub-phases:
+
+\begin{enumerate}
+  \item
+    The left-hand side of each equation (of type \holtype{term}) is destructured into a tuple $\holtypejudgement{(\mathit{name}, \allowbreak\mathit{pats})\allowbreak}{\holtype{string} \times \holtype{term}\;\holtype{list}}$, where $\mathit{name}$ represents the head of the equation and $\mathit{pats}$ the list of patterns.
+  \item
+    The right-hand side (of type \holtype{nterm}) can be trivially embedded into \holtype{pterm}:
+    An \holtype{nterm}-abstraction $\Lambda x.\;t$ is translated to the \holtype{pterm}-abstraction $\Lambda \{\embed x \Rightarrow t\}$, i.e., a case abstraction with the single clause $(\holconst{Pvar}\;x, t)$.
+  \item
+    Equations with the same head are grouped together.
+    Different groups are processed separately.
+    A single group has the type $(\holtype{term}\;\holtype{list} \times \holtype{pterm})\;\holtype{set}$.
+    This corresponds to the initial matrix representation as depicted in §\ref{sec:intermediate:elim:proc}.
+  \item
+    For each function (i.e.\ for each group) that has an arity greater than zero, the elimination procedure is applied.
+    The type does not change here.
+    This can be iterated until all functions have arity zero (\cref{thm:intermediate:elim:iter}).
+\end{enumerate}
+%
+For correctness and completeness purposes, all but the last step have purely syntactic proofs, that is, they do not require arguing about the semantics.
+
+The target semantics has two variants and is given in \cref{code:intermediate:elim}.
+The first variant with the \textsc{Step} rule performs both implicit and explicit pattern matching, to account for functions that may have nonzero arity.
+
+The second variant applies after a post-processing step.
+When all functions in the rule set are of arity zero, the implicit pattern lists are all empty.
+Consequently, the rule set can be trivially converted to type $(\holtype{string} \times \holtype{pterm})\;\holtype{set}$ by stripping the pattern lists.
+To accommodate for this, the modified \textsc{Step'} rule merely replaces a constant by its definition, without taking arguments into account.
+Only the \textsc{Beta} rule performs pattern matching.
+
+The remainder of this section is concerned with the proofs for the elimination procedure.
+I will briefly revisit the initial and post-processing steps in §\ref{sec:intermediate:elim:discussion}.
+
+\subsection{Correspondence relation}
+\label{sec:intermediate:elim:corr}
+
+
+\begin{code}[t]
+  \[
+    \inferrule*[left=Const]{ }{\corrp{\holconst{Pconst}\;n}{\holconst{Pconst}\;n}} \quad
+    \inferrule*[left=Var]{ }{\corrp{\holconst{Pvar}\;n}{\holconst{Pvar}\;n}} \quad
+    \inferrule*[left=Comb]{\corrp{t_1}{t_2} \\ \corrp{u_1}{u_2}}{\corrp{\app{t_1}{u_1}}{\app{t_2}{u_2}}}
+  \]
+  \[
+    \inferrule*[left=Ext]{
+      \holconst{rel}\;(\lambda (p_1, t_1)\;(p_2, t_2).\; p_1 = p_2 \wedge \corrp{t_1}{t_2})\;\C_1\;\C_2
+    }{\corrp{\Lambda\;\C_1}{\Lambda\;\C_2}}
+  \]
+  \[
+    \inferrule*[left=Defer]{
+      \forall i.\;\holconst{closed}\;t_i \\
+      (f, \R_f) \in \R \\
+      \holconst{arity}\;\R_f > 0 \\
+      \holconst{rel}\;(\lambda (p_1, t_1)\;(p_2, t_2).\; p_1 = p_2 \wedge \corrp{t_1}{t_2})\;(\holconst{deferred}\;[t_1, \ldots, t_n]\;\R_f)\;\C
+    }{\corrp{\holconst{Pconst}\;f\mathbin\$t_1\mathbin\$\ldots\mathbin\$t_n}{\Lambda\;\C}}
+  \]
+  \begin{align*}
+    \holconst{deferred}\;\mathit{ts}\;R_f = \{(p_{n+1}, &\holconst{subst}\;\sigma\;\mathit{rhs}) \mid\\
+    &([p_1, p_2, \ldots, p_{n+1}], \mathit{rhs}) \in \R_f \wedge \holconst{matchs}\;[p_1, \ldots, p_n]\;\mathit{ts} = \holconst{Some}\;\sigma \}
+  \end{align*}
+  \caption{Left-deferred correspondence}
+  \label{code:intermediate:elim:corr}
+\end{code}
+
+The statement of the semantic correctness property is more difficult than in the previous phase.
+The obvious property does not hold:
+%
+\[
+  \inferrule{
+    \rewrite{\holconst{compile}\;\R}{t}{u} \\
+    \holconst{closed}\;t
+  }{
+    \rewrite\R t u
+  }
+\]
+%
+Consider the \holconst{map} function again.
+After eliminating once, the defining equation of \holconst{map} is of the form $\embed{\holconst{map}\;f} = \Lambda\;C$, which means that the term $\embed{\holconst{map}\;\holconst{id}}$ can be rewritten to $\Lambda\;C$.
+However, this rewrite step cannot be taken in the original rule set, because the second argument is missing.
+
+Because of the absence of a direct correspondence, I have introduced a relation $\approx_\text{p}$ (\cref{sec:intermediate:elim:corr}).
+The ultimate goal is that the following correctness property holds:
+%
+\[
+  \inferrule{
+    \rewrite{\holconst{compile\_single}\;\R}{u}{u'} \\
+    \corrp{t}{u} \\
+    \holconst{closed}\;t
+  }{
+    \exists t'.\;\rewrite*\R t t' \wedge \corrp{t'}{u'}
+  }
+\]
+%
+where \holconst{compile\_single} is a single application of the elimination procedure.
+For this to work, $\approx_\text{p}$ must take the rule set into account.
+
+I will illustrate the meaning of this relation based on the \holconst{map} example.
+Consider its matrix representation:
+\[
+  R_{\holconst{map}} =
+    \left(\begin{array}{cc|c}
+      \embed f & \embed{[]} & \embed{[]} \\
+      \embed f & \embed{x \cons \mathit{xs}} & \embed{f\;x \cons \holconst{map}\;f\;\mathit{xs}}
+    \end{array}\right)
+\]
+%
+After an elimination step:
+%
+\[
+  R'_{\holconst{map}} =
+    \left(\begin{array}{c|c}
+      \embed f &
+        \embed{\begin{aligned}
+                 \lambda\; &[] \Rightarrow [] \\
+                 |\;&x \cons \mathit{xs} \Rightarrow (\lambda y.\;y)\;x \cons \holconst{map}\;(\lambda y.\;y)\;\mathit{xs}
+               \end{aligned}}
+    \end{array}\right)
+\]
+%
+In this modified rule set, the term $\embed{\holconst{map}\;(\lambda y.\;y)}$ can be rewritten.
+In the original rule set, it cannot.
+I refer to such a rewriting as a \emph{half-step}.
+Using the \textsc{Defer} rule, the un-reduced and the reduced term are related:
+%
+\[
+  \corrp{
+    \embed{\holconst{map}\;(\lambda y.\;y)}
+  }{
+    \embed{\begin{aligned}
+      \lambda\; &[] \Rightarrow [] \\
+      |\;&x \cons \mathit{xs} \Rightarrow (\lambda y.\;y)\;x \cons \holconst{map}\;(\lambda y.\;y)\;\mathit{xs}
+    \end{aligned}}
+  }
+\]
+%
+The \textsc{Defer} rule can be explained by examining the \holconst{deferred} function.
+Given a function application for $n$ parameters $\embed{\holconst{c}\;t_1\;\ldots\;t_n}$ of a function with arity $n+1$, it selects all defining equations that so far match these arguments (minus the $n+1$-st one).
+Each of these equations $\embed{\holconst{c}\;p_1\;\ldots\;p_n\;p_{n+1} = t}$ carries an additional pattern $p_{n+1}$ for the $(n+1)$st argument which has to be supplied eventually.
+From these equations, I construct a $\Lambda$-abstraction comprising pairs $(\embed{p_{n+1}}, \holconst{subst}\;\sigma\embed t)$, where $\sigma$ is the result of matching the initial $n$ patterns.
+
+Based on this understanding, the $\approx_\text{p}$ can be described as a \emph{left-deferred} or a \emph{right-extensional} correspondence.
+
+In the case of abstraction-free terms, the relation collapses to equality:
+
+\begin{lemma}\label{thm:intermediate:elim:eq}
+  If $\corrp t u$ and $u$ is abstraction-free, then $t = u$.
+\end{lemma}
+
+\begin{proof}
+  By rule induction on $\approx_\text{p}$.
+  Neither the \textsc{Ext} nor the \textsc{Defer} rule are applicable; consequently, only \textsc{Const}, \textsc{Var}, and \textsc{Comb} are left.
+  They describe an equality relation.
+\end{proof}
+
+\noindent
+This lemma becomes important when considering the iterated elimination, because $\approx_\text{p}$ is not transitive.
+
+\begin{lemma}\label{thm:intermediate:elim:rel-struct}
+  $\approx_\text{p}$ is reflexive. $\approx_\text{p}$ is a structural term relation (§\ref{sec:terms:algebra:thy:preds}).
+\end{lemma}
+
+\remark{
+  $\approx_\text{p}$ is an example of a structural term relation that is not also a strong structural relation:
+  If $t$ and $u$ are related through the \textsc{Defer} rule, then $t$ may be an application or a constant, whereas $u$ is an abstraction, hence having different shapes.
+  Consequently, \cref{thm:terms:algebra:match-rel} would be violated.
+}
+
+\begin{lemma}[Substitution]\label{thm:intermediate:elim:subst}
+  Let $t_1$ and $t_2$ be related terms.
+  Also, let $\sigma_1$ and $\sigma_2$ be closed and related environments.
+  Then, the results of substitution are also related.
+  Formally: $\corrp{\holconst{subst}\;\sigma_1\;t_1}{\holconst{subst}\;\sigma_2\;t_2}$.
+\end{lemma}
+
+\subsection{Correctness}
+
+Recall the desired correctness property as stated in §\ref{sec:intermediate:elim:corr}:
+
+\begin{theorem}\label{thm:intermediate:elim:correctness}
+  \[
+    \inferrule{
+      \rewrite{\holconst{compile\_single}\;\R}{u}{u'} \\
+      \corrp{t}{u} \\
+      \holconst{closed}\;t
+    }{
+      \exists t'.\;\rewrite*\R t t' \wedge \corrp{t'}{u'}
+    }
+  \]
+\end{theorem}
+
+\noindent
+Observe that the conclusion uses the starred rewrite relation, i.e., its reflexive-transitive closure.
+The reason is simple:
+one step in the transformed rule set may correspond to zero or one step in the original rule set.
+
+\begin{proof}
+  By rule induction over the semantics (\cref{code:intermediate:elim}).
+  Similarly to the proof of \cref{thm:intermediate:named}, the interesting cases are \textsc{Step} and \textsc{Beta}.
+
+  \begin{induction}
+    \item[Step]
+      In this case, $u$ is an application of a constant to a number of arguments.
+      It holds that $\rewrite{\holconst{compile\_single}\;R}{\embed{\holconst{c}\;u_1\;\ldots\;u_n}}u'$ for some $u'$ and $u_i$.
+      Case distinction on \holconst{c}'s arity in \R:
+
+      \begin{itemize}
+        \item
+          If \holconst{c} already had arity zero, nothing changed during compilation.
+          In particular, there is a rule in $\R$ that matches and can rewrite the function application to $u'$.
+          The same rewrite step needs to be taken from a $t$ where $\corrp{t}{u}$.
+          This follows from \cref{thm:intermediate:elim:subst,thm:intermediate:elim:rel-struct}.
+          Consequently, $\rewrite\R{\embed{\holconst{c}\;t_1\;\ldots\;t_n}}t'$ where $\corrp{t'}{u'}$ with a single rewrite step.
+        \item
+          If not, the arity of \holconst{c} decreased.
+          This case requires establishing the correctness of the \holconst{deferred} set:
+          the transformed rule set is able to perform a half-step, whereas $\R$ cannot.
+          Hence, set $t' = t$ with $\rewrite*\R{t}{t'}$ because of the reflexive-transitive closure.
+          It remains to be shown that $\corrp{t}{u'}$.
+          This requires \cref{thm:intermediate:elim:subst,thm:terms:algebra:compatibles-eq}.
+      \end{itemize}
+    \item[Beta]
+      In this case, $u$ is an application where the function is a case abstraction, i.e., there is an $x$ such that $u = \app{(\Lambda\;C)}{x}$ and $\rewrite{\holconst{compile\_single}\;R}{(\Lambda\;C)\;x}{u'}$ for some $u'$.
+      $u'$ is the result of matching $x$ to a pattern $p$ in $C$ and subsequent substitution.
+      Now, $t$ is a term such that $\corrp{t}{\app{(\Lambda\;C)}{x}}$.
+      Using the \textsc{Comb} rule, there must be $t_1$ and $t_2$ with $t = \app{t_1}{t_2}$ and $\corrp{t_1}{\Lambda\;C}$ and $\corrp{t_2}{x}$.
+      There are two possible cases in $\approx_\text{p}$ that could give rise to $\corrp{t_1}{\Lambda\;C}$:
+      \begin{semantics}
+        \item[Ext]
+          This is the simple case, because it reveals that $t_1$ has an identical structure to $\Lambda\;C$.
+          Hence, there is an equivalent pattern $p'$ in $t_1$ as in $C$.
+          The result follows from \cref{thm:intermediate:elim:subst,thm:intermediate:elim:rel-struct}.
+        \item[Defer]
+          The situation is that $t_1$ is an application of a constant to a list of arguments.
+          The rewrite step could not be completed because the number of arguments is one less than the arity of that constant.
+          However, since $t = \app{t_1}{t_2}$, the step can now be completed, because $t_2$ is available as an extra argument.
+          On the other side, $\Lambda\;C$ are precisely the clauses that have been deferred.
+          It now remains to find the matching pattern $p$ in $C$ and establish the existence of a corresponding equation in \R.
+          The technical challenge is that the right-hand sides in $C$ have already been partially substituted by the half-step.
+          This can be solved by using \cref{thm:terms:algebra:match-matchs,thm:terms:algebra:subst-indep}, which allow to split the matching and substitution into two parts: first the $n$-ary prefix and then the additional pattern $p$. \qedhere
+      \end{semantics}
+  \end{induction}
+\end{proof}
+
+\noindent
+Combining this result with \cref{thm:intermediate:elim:eq} yields:
+
+\begin{corollary}[Correctness for abstraction-free results]
+  \[
+    \inferrule{
+      \rewrite{\holconst{compile\_single}\;\R}{t}{u} \\
+      \holconst{closed}\;t \\
+      \holconst{no\_abs}\;u
+    }{
+      \rewrite*\R t u
+    }
+  \]
+\end{corollary}
+
+\noindent
+This corollary can be lifted to \holconst{compile}, i.e., the iterated application of \holconst{compile\_single}.
+
+\subsection{Completeness}
+
+\authorship{
+  The proof in this section has been contributed by Yu Zhang.
+}
+
+\noindent
+The opposite direction can be stated directly, without the use of an additional relation:
+
+\begin{theorem}\label{thm:intermediate:elim:completeness}
+  \[
+    \inferrule{
+      \rewrite\R t t' \\
+      \holconst{closed}\;t
+    }{
+      \rewrite*{\holconst{compile\_single}\;\R}{t}{t'}
+    }
+  \]
+\end{theorem}
+
+\noindent
+Whereas the correctness requires the original semantics to perform zero or one step, completeness requires the new semantics to perform one or two steps:
+if the arity of one constant has been reduced during pattern elimination, both half-steps need to be executed in order.
+This is also the idea of the proof for the \textsc{Step} case; the other cases are trivial.
+
+\subsection{Discussion}
+\label{sec:intermediate:elim:discussion}
+
+This compilation phase is both non-trivial and has some minor restrictions on the set of function definitions that can be processed.
+Instead of eliminating patterns from right to left, patterns could also alternatively be grouped into tuples.
+The \holconst{map} example would be translated into:
+%
+\begin{align*}
+  \holconst{map} = \lambda\; &(f, []) \Rightarrow [] \\
+  |\;&(f, x \cons \mathit{xs}) \Rightarrow f\;x \cons \holconst{map}\;f\;\mathit{xs}
+\end{align*}
+%
+The compilation of patterns would then be left for the CakeML compiler, which has no pattern compatibility restriction.
+
+Despite the simpler idea behind the algorithm, there are two disadvantages:
+\begin{itemize}
+  \item the compiler phase would require the knowledge of a tuple type in the term language, which is otherwise unaware of concrete datatypes
+  \item the correspondence relation would be harder to specify, because the alternative translation goes directly from arity $n$ to $0$.
+\end{itemize}
+
+\noindent
+Finally, I will review the complexity of the proofs in this section.
+Recall the detailed structure of this compiler phase as outlined in §\ref{sec:intermediate:elim:impl}.
+
+The vast majority of the complexity is caused by the iterative elimination procedure.
+The other parts, namely the massaging of \holtype{nterm}s to arrive at a syntactically equivalent rule set of \holtype{pterm}s, and similarly to remove empty implicit pattern lists, only require some basic reasoning on sets.
+But all steps share the requirement for classical logic.
+Frequently, I have resorted to using choice operators, for example, when determining the arity of a function definition.
+Nonetheless, the entire routine is executable (§\ref{sec:background:code}).

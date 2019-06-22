@@ -1,0 +1,88 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Pattern compatibility}
+\label{sec:preproc:compatibility}
+
+The pattern elimination phase of the compiler (§\ref{sec:intermediate:elim}) demands a stronger guarantee than non-overlapping patterns.
+The reason for that is deferred until that section, whereas here, I will explain how this requirement is ensured during preprocessing.
+
+\begin{definition}[Overlapping patterns]\label{def:preproc:compatibility:overlapping}\index{pattern overlap}
+  Two patterns $t_1$ and $t_2$ \emph{overlap} if there is a term $u$ that is matched by both $t_1$ and $t_2$.
+\end{definition}
+
+\remark*{
+  The definition for overlapping patterns given above differs from the one used in the formalization.
+  A refined version based on different primitives is presented in §\ref{sec:terms:algebra:thy:subst}.
+}
+
+\begin{definition}[Pattern compatibility]\index{pattern compatibility}\label{def:preproc:compatibility}
+  Two patterns $t$ and $u$ are compatible:
+  \begin{itemize}
+    \item
+      if both are applications, i.e., there are $t_1$, $t_2$, $u_1$, and $u_2$ such that $t = t_1\;t_2$ and $u = u_1\;u_2$, then
+      \begin{enumerate}
+        \item $t_1$ and $u_1$ must be compatible, and
+        \item if $t_1 = u_1$, then $t_2$ and $u_2$ must be compatible,
+      \end{enumerate}
+    \item
+      otherwise,
+      \begin{enumerate}
+        \item $t = u$, or
+        \item $t$ and $u$ do not overlap.
+      \end{enumerate}
+  \end{itemize}
+\end{definition}
+
+\noindent
+For example, the following function definition does not satisfy pattern compatibility, because the first parameter is named differently in the two equations:
+%
+\begin{lstlisting}[language=Isabelle]
+fun map where
+map //f// [] = []
+map //g// (//x// # //xs//) = (* ... *)
+\end{lstlisting}
+
+\begin{lemma}[Reflexivity]
+  $t$ is compatible to itself.
+\end{lemma}
+
+\begin{lemma}\label{thm:preproc:compatibility:cases}
+  For two compatible patterns $t$ and $u$, they are either equal or do not overlap.
+\end{lemma}
+
+\begin{proof}
+  I first prove the weaker result that $t$ and $u$ are equal or do not overlap by induction on the definition of pattern compatibility.
+  The actual lemma follows together with reflexivity.
+
+  Consider the case where both $t$ and $u$ are not applications.
+  Then, by definition, $t = u$ or $t$ and $u$ do not overlap.
+
+  The remaining case is where both are applications, i.e., $t = t_1\;t_2$ and $u = u_1\;u_2$.
+  By definition, $t_1$ and $u_1$ must be compatible.
+  I perform a case distinction on $t_1 = u_1 \wedge u_1 = u_2$.
+  \begin{itemize}
+    \item
+      If $t_1 = u_1 \wedge u_1 = u_2$, then $t = u$.
+    \item
+      If $t_1 = u_1$, then $t_2 \neq u_2$.
+      By definition, $t_2$ and $u_2$ are also compatible.
+      Applying the induction hypothesis yields that $t_2 = u_2$ (contradiction) or $t_2$ and $u_2$ do not overlap.
+      Hence, $t_1\;t_2$ and $u_1\;u_2$ do not overlap.
+    \item
+      Otherwise, I know that $t_1 \neq u_1$.
+      Applying the induction hypothesis on the fact that $t_1$ and $u_1$ are compatible yields that $t_1 = u_1$ (contradiction) or $t_1$ and $u_1$ do not overlap.
+      Hence, $t_1\;t_2$ and $u_1\;u_2$ do not overlap. \qedhere
+  \end{itemize}
+\end{proof}
+
+\noindent
+The preprocessing will rename $g$ to $f$ to ensure that matching sub-patterns are also equal.
+This does not work in all cases (§\ref{sec:preproc:limitations}).
+
+The algorithm itself is rather simple:
+starting out with an empty set of defining equations, each defining equation gets added to the set.
+Before adding, it is compared with all existing equations in the set and variables are renamed if necessary and possible.
+The resulting set are the new defining equations.
+
+A more formal definition of pattern compatibility will be given in §\ref{sec:terms:algebra:thy:matching}.

@@ -1,0 +1,29 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Side conditions}
+\label{sec:intermediate:wellformed}
+
+All of the semantics presented in this chapter require some side conditions on the rule set.
+These conditions are purely syntactic.
+For example, these are the conditions for the correctness of the first compiler phase:
+
+\begin{itemize}
+  \item Patterns must be linear, and constructors in patterns must be fully applied.
+  \item Definitions must have at least one parameter on the left-hand side (§\ref{sec:intermediate:value}).
+  \item The right-hand side of an equation refers only to free variables occurring in patterns on the left-hand side and contains no dangling de~Bruijn indices.
+  \item There are no two defining equations $\mathit{lhs} = \mathit{rhs}_1$ and $\mathit{lhs} = \mathit{rhs}_2$ such that $\mathit{rhs}_1 \neq \mathit{rhs}_2$.
+  \item For each pair of equations that define the same constant, their arity must be equal and their patterns must be compatible (§\ref{sec:intermediate:elim}).
+  \item There is at least one equation.
+  \item Variable names occurring in patterns must not overlap with constant names (§\ref{sec:intermediate:ml}).
+  \item Any occurring constants must either be defined by an equation or be a constructor.
+\end{itemize}
+
+\noindent
+The conditions for the subsequent phases are sufficiently similar that I do not list them again.
+
+In the formalization, I use locales to fix the rules and assumptions over them.
+Each phase has its own locale, together with a sublocale proof that after compilation, the conditions are preserved in the new semantics.
+Some of the correspondence relations are defined within the locale, so that they can access the fixed rules (and potentially additional parameters).
+For technical reasons, the semantics are usually defined outside of the locales.
+In the subsequent sections, the modelling as locales and the sublocale proofs are largely ignored, since they offer no new insights into the formalization.

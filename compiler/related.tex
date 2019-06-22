@@ -1,0 +1,17 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Related work}
+
+There is existing work in the Coq \cite{anand2017certicoq,forster2016extraction} and HOL \cite{myreen2014translation} communities for proof producing or verified extraction of functions defined in the logic.
+Anand \etal\ \cite{anand2017certicoq} present work in progress on a verified compiler from Gallina (Coq's specification language) via untyped intermediate languages to CompCert C light.
+They plan to connect their extraction routine to the CompCert compiler \cite{leroy2009compiler}.
+
+Compilation of pattern matching is well understood in literature \cite{augustsson1985pattern,peytonjones1987implementation,slind1999terminating}.
+In this work, I contribute a transformation of sets of equations with pattern matching on the left-hand side into a single equation with nested pattern matching on the right-hand side. This is implemented and verified inside Isabelle.
+
+Besides CakeML, there are many projects for verified compilers for functional programming languages of various degrees of sophistication and realism~\cite{BentonH09,Chlipala10,Flatau}.
+Particularly modular is the work by Neis \etal\ \cite{neis2015pilsner} on a verified compiler for the ML-like imperative source language Pilsner.
+The main distinguishing feature of this work is that I start from a set of higher-order recursion equations with pattern matching on the left-hand side rather than a lambda calculus with pattern matching on the right-hand side.
+On the other hand I stand on the shoulders of CakeML which allows me to bypass all complications of machine code generation.
+Note that much of the formalization is not specific to CakeML and that it would be possible to retarget it to, for example, Pilsner abstract syntax with moderate effort.

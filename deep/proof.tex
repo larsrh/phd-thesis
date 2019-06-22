@@ -1,0 +1,57 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Embedding proofs}
+\label{sec:deep:proofs}
+
+The proofs for the correctness of the embedding are fully automatic.
+To illustrate the mechanics, I will prove the embedding for a list concatenation function:
+%
+\begin{align*}
+  \holconst{append}\;[]\;\mathit{ys} &= \mathit{ys} \\
+  \holconst{append}\;(\mathit{x} \cons \mathit{xs})\;\mathit{ys} &= \mathit{x} \cons \holconst{append}\;\mathit{xs}\;\mathit{ys}
+\end{align*}
+%
+In this simple example, the function is total (according to §\ref{sec:preproc:dict:partial}).
+Consequently, the final theorem is unconditional and in $\eta$-contracted form:
+%
+\[ \eval\R{\embed{\holconst{append}}}{\holconst{append}} \]
+%
+In order to prove this statement, the definition of $\approx$ for functions needs to be unfolded twice:
+%
+\[
+  \inferrule*{
+    \evalr\R{t_\mathit{xs}}{\mathit{xs}} \\
+    \evalr\R{t_\mathit{ys}}{\mathit{ys}}
+  }{
+    \exists t'.\;\rewrite*\R{\app{\app{\embed{\holconst{append}}}{t_{\mathit{xs}}}}{t_{\mathit{ys}}}}t' \wedge \eval R{t'}{\holconst{append}\;\mathit{xs}\;\mathit{ys}}
+  }
+\]
+%
+The \holconst{append} function now appears in fully-expanded application form.
+
+\remark*{
+  The variables $\holtypejudgement{t_\mathit{xs}}{\holtype{term}}$ and $\holtypejudgement{t_\mathit{ys}}{\holtype{term}}$ are \emph{metavariables}.
+  As such, they do not stand for \holtype{term}-level variables $\holconst{Free}\;\mathit{xs}$ or $\holconst{Free}\;\mathit{ys}$, but rather for arbitrary terms.
+  The naming is chosen to illustrate the relationship between $t_x$ and $x$.
+}
+
+\noindent
+However, the term $\app{\app{\embed{\holconst{append}}}{t_{\mathit{xs}}}}{t_{\mathit{ys}}}$ cannot be rewritten, because no rule in $\R$ matches.
+In this case, applying induction on $\mathit{xs}$ is sufficient; in general, induction on the termination relation of the function is required.
+
+Consider the case where $\mathit{xs} = []$.
+The assumption for $t_\mathit{xs}$ is instantiated as $\evalr\R{t_\mathit{xs}}{[]}$.
+Expanding $\downarrow$ means that there is a $t'$ such that $t_\mathit{xs}$ can be rewritten to $t'$ and $\eval\R{t'}{[]}$.
+According to the definition of $\approx_{\holtype{list}}$, i.e., the ground embedding of \holtype{list}, $t' = \embed{[]} = \holconst{Const}\;\mathtt{"List.list.Nil"}$.
+Now, consider the rewriting of $\app{\app{\embed{\holconst{append}}}{t_{\mathit{xs}}}}{t_{\mathit{ys}}}$ again:
+%
+\begin{align*}
+  \app{\app{\embed{\holconst{append}}}{t_{\mathit{xs}}}}{t_{\mathit{ys}}} &\longrightarrow^* \app{\app{\embed{\holconst{append}}}{\embed{[]}}}{t_{\mathit{ys}}} \\
+  &\longrightarrow^* t_{\mathit{ys}}
+\end{align*}
+%
+Since $\evalr\R{t_\mathit{ys}}{\mathit{ys}}$ is known, the existential quantifier in the conclusion can be instantiated by $t' = t_\mathit{ys}$, solving the case.
+
+For the case $\mathit{xs} = \app{z}{\mathit{zs}}$, the approach is similar.
+The only difference is that unfolding the definition of $\approx_{\holtype{list}}$ reveals information on both $z$ and $\mathit{zs}$, meaning the final rewrite chain becomes longer.

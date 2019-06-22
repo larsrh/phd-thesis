@@ -1,0 +1,342 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Naming bound variables}
+\label{sec:intermediate:named}
+
+\authorship{
+  Some proofs in this section have been contributed by Yu Zhang.
+
+  \medskip
+  Portions of this section appear in the AFP entry \citetitle{hupel2019algebra}, authored by \citeauthor{hupel2019algebra}~\cite{hupel2019algebra}.
+}
+
+\begin{code}[t]
+  \[
+    \inferrule*[left=Step]{(\mathit{lhs}, \mathit{rhs}) \in \R \\ \holconst{match}\;\mathit{lhs}\;t = \holconst{Some}\;\sigma}{\rewrite{\R}{t}{\holconst{subst}\;\sigma\;\mathit{rhs}}}
+    \quad
+    \inferrule*[left=Beta]{ }{\rewrite{\R}{\app{(\Lambda x.\;t)}{t'}}{\holconst{subst}\left[x \mapsto t'\right]\;t}} \quad
+  \]
+  \[
+    \inferrule*[left=Fun]{\rewrite{\R}{t}{t'}}{\rewrite{\R}{\app t u}{\app{t'}{u}}}
+    \quad
+    \inferrule*[left=Arg]{\rewrite{\R}{u}{u'}}{\rewrite{\R}{\app t u}{\app{t}{u'}}}
+  \]
+  \caption{Small-step semantics with explicit bound variable names}
+  \label{code:intermediate:named}
+\end{code}
+
+\noindent
+Isabelle uses de~Bruijn indices in the term language for the following two reasons:
+First, for substitution, there is no need to rename bound variables.
+Second, $\alpha$-equivalent terms are equal.
+
+In implementations of programming languages, these advantages are not required:
+Typically, substitutions do not happen inside abstractions, and there is no notion of equality of functions.
+CakeML is no exception and therefore it uses named variables.
+In this compilation step, de~Bruijn indices are removed.
+
+The \emph{named} semantics is based on the \holtype{nterm} type (\cref{code:terms:intermediate}).
+The rules are given in \cref{code:intermediate:named}.
+Notably, $\beta$-reduction\index{beta-reduction@$\beta$-reduction} reuses the substitution function.
+
+For the correctness proof, I establish a correspondence between \holtype{term}s and \holtype{nterm}s.
+Translation from \holtype{nterm} to \holtype{term} is trivial:
+Replace bound variables by the number of abstractions between occurrence and where they were bound in, and keep free variables as they are.
+This function is called \holconst{nterm\_to\_term}\holconstindex{nterm\_to\_term}.
+
+The other direction is not unique and requires introduction of \keyword{fresh} names for bound variables.
+In the formalization, I have chosen to use a \emph{monad} to produce these names (§\ref{sec:intermediate:named:fresh}).
+This function is called \holconst{term\_to\_nterm}\holconstindex{term\_to\_nterm}.
+
+Both functions should behave in such a way that conversion back and forth yields the same term.
+For converting from \holtype{term} to \holtype{nterm} and back, this is trivial to ensure (§\ref{sec:intermediate:named:trans}).
+However, the other direction is harder, because when converting from \holtype{nterm} to \holtype{term}, the original variable names get lost.
+
+\subsection{The \texttt{fresh} monad}
+\label{sec:intermediate:named:fresh}
+
+Generation of fresh names in general can be thought of as picking a string that is not an element of a (finite) set of already existing names.
+For Isabelle, the \emph{Nominal} framework \cite{urban2008nominal,urban2013nominal} provides support for reasoning over fresh names, but unfortunately, its definitions are not executable.
+
+Instead, I chose to model generation of fresh names as a monad $\alpha\;\holtype{fresh}$\holtypeindex{fresh} with the following high-level interface:
+%
+\begin{align*}
+  \holtypejudgement{\holconst{Fresh.create}}{&\holtype{string}\;\holtype{fresh}} \\
+  \holtypejudgement{\holconst{Fresh.return}}{&\alpha \Rightarrow \alpha \;\holtype{fresh}} \\
+  \holtypejudgement{\holconst{Fresh.bind}}{&\alpha\;\holtype{fresh} \Rightarrow (\alpha \Rightarrow \beta \;\holtype{fresh}) \Rightarrow \beta \;\holtype{fresh}} \\
+  \holtypejudgement{\holconst{Fresh.run}}{&\alpha\;\holtype{fresh} \Rightarrow \holtype{string}\;\holtype{set} \Rightarrow \alpha}
+\end{align*}\holconstindex{Fresh.create}\holconst{Fresh.return}\holconst{Fresh.run}\holconst{Fresh.bind}
+%
+With this, it becomes possible to write programs using \holkeyword{do}-notation.
+Note that such a program only tracks the known names via the argument passed into \holconst{run}; it is not possible to declare further names inside the program.
+This is sufficient for the compiler, because the set of all reserved names is known in advance:
+I take the union of all known constant names, including constructors.
+
+In the formalization, this is implemented using the state monad, i.e., $\alpha\;\holtype{fresh}$ is a type synonym for a function $\holtype{string} \Rightarrow (\alpha \times \holtype{string})$.
+Perhaps counter-intuitively, the state type is just a single \holtype{string} instead of a $\holtype{string}\;\holtype{set}$.
+It is used to track the highest used name according to the lexicographic order of strings.
+
+Abstractly, this is modelled as a locale that expects two operations $\holtypejudgement{\holconst{next}}{\alpha \Rightarrow \alpha}$\holconstindex{next} and $\holtypejudgement{\holconst{arb}}{\alpha}$\holconstindex{arb} with the axiom $\holconst{next}\;x > x$.
+The high-level \holconst{Fresh.create} operation can then be defined as $\lambda x.\;(\holconst{next}\;x, \holconst{next}\;x)$.
+
+It remains to be explained how \holconst{run} can be implemented, i.e., how the highest used name is computed.
+The locale expects $\alpha$ to be a \holclass{linorder}.
+Using the $\holtypejudgement{\holconst{Max}}{\alpha \Rightarrow \alpha\;\holtype{set}}$ combinator from Isabelle's library and the \holconst{arb} operation, a derived operation to compute the successor of a set of names can be defined as follows:
+%
+\begin{lstlisting}
+definition Next :: $\alpha$ set $\Rightarrow$ $\alpha$ where
+Next //S// = (||if|| //S// = $\emptyset$ ||then|| arb ||else|| next (Max //S//))
+\end{lstlisting}\holconstindex{Next}
+%
+Consequently, \holconst{Fresh.run} is merely an abbreviation for first computing the successor of the input set of names, then running the state function with that successor.
+
+\begin{definition}[Freshness]\index{fresh}
+  A name $s'$ is fresh in a set $S$ if all $s \in S$ are smaller than $s'$.
+\end{definition}
+
+\begin{lemma}
+  $\holconst{Next}\;S$ is fresh in $S$, i.e., $\forall s \in S.\; \holconst{Next}\;S > s$.
+\end{lemma}
+
+\begin{corollary}
+  $\holconst{Next}\;S \not\in S$.
+\end{corollary}
+
+\noindent
+This abstract specification of fresh name generation has multiple advantages:
+\begin{itemize}
+  \item
+    There may be multiple implementations for a single type; here, I chose suffixing an underscore to the highest name for computing the successor.
+  \item
+    All existing combinators and lemmas on the state monad can be reused.
+  \item
+    Reasoning about freshness of names can be reduced to monotonicity arguments.
+\end{itemize}
+
+\noindent
+The disadvantage is that it is harder to provide an implementation that uses a fixed scheme for fresh names, e.g.\ $\mathtt{"a"}$ with a suffixed number.
+In particular, it requires a modified linear order for names.
+
+\subsection{Translations between \holtype{term} and \holtype{nterm}}
+\label{sec:intermediate:named:trans}
+
+\begin{code}[t]
+  \begin{lstlisting}[language=Isabelle]
+fun term_to_nterm :: string list $\Rightarrow$ term $\Rightarrow$ nterm fresh where
+term_to_nterm _ (Const //name//) = Fresh.return (Nconst //name//)
+term_to_nterm _ (Free //name//) = Fresh.return (Nvar //name//)
+term_to_nterm $\Gamma$ (Bound //n//) = Fresh.return (Nvar ($\Gamma$ ! //n//))
+term_to_nterm $\Gamma$ ($\Lambda$ //t//) = ||do|| {
+  //n// $\leftarrow$ Fresh.create;
+  //e// $\leftarrow$ term_to_nterm (//n// # $\Gamma$) t;
+  Fresh.return ($\Lambda$ //n//. //e//)
+}
+term_to_nterm $\Gamma$ ($t_1$ $\${}$ $t_2$) = ||do|| {
+  $e_1$ $\leftarrow$ term_to_nterm $\Gamma$ $t_1$;
+  $e_2$ $\leftarrow$ term_to_nterm $\Gamma$ $t_2$;
+  Fresh.return ($e_1$ $\${}$ $e_2$)
+}
+
+fun nterm_to_term :: string list $\Rightarrow$ nterm $\Rightarrow$ term where
+nterm_to_term _ (Nconst //name//) = Const //name//
+nterm_to_term $\Gamma$ (Nvar //name//) = ||case|| find_first //name// $\Gamma$ ||of||
+    Some //n// $\Rightarrow$ Bound //n//
+    None $\Rightarrow$ Free //name//
+nterm_to_term $\Gamma$ (//t// $\${}$ //u//) = nterm_to_term $\Gamma$ //t// $\${}$ nterm_to_term $\Gamma$ //u//
+nterm_to_term $\Gamma$ ($\Lambda$ //x//. //t//) = $\Lambda$ nterm_to_term (//x// # $\Gamma$) //t//\end{lstlisting}\holconstindex{term\_to\_nterm}\holconstindex{nterm\_to\_term}
+  \caption{Translations between \holtype{term}s and \holtype{nterm}s}
+  \label{code:intermediate:named:translation}
+\end{code}
+
+\noindent
+Both translations are recursive functions on the structure of the input terms, with an additional parameter $\Gamma$ that records the context of bound variable names (\cref{code:intermediate:named:translation}).
+
+For terms that contain no abstractions, \holconst{term\_to\_nterm} coincides with \holconst{convert\_term} for all $\Gamma$; the opposite direction coincides only for $\Gamma = []$.
+
+\begin{lemma}
+  \label{thm:intermediate:named:translate}
+  Let $t$ be a wellformed \holconst{term} (i.e., without dangling de~Bruijn indices).
+  Then, the translation of $t$ from \holtype{term} to \holtype{nterm} is reversible:
+  \[ \holconst{nterm\_to\_term}\;[]\;(\holconst{run}\;(\holconst{term\_to\_nterm}\;[]\;t)\;S) = t, \]
+  where $\holconst{frees}\;t \subseteq S$.
+\end{lemma}
+
+\noindent
+The basic proof idea is to use induction over $t$ after suitable generalization for an arbitrary context $\Gamma$.
+
+\begin{code}[t]
+  \[
+    \inferrule*{
+    }{\Gamma \vdash \holconst{Nconst}\;x \approx_\alpha \holconst{Nconst}\;x} \quad
+    \inferrule*{
+      x \not\in \holconst{dom}\;\Gamma \\
+      x \not\in \holconst{ran}\;\Gamma
+    }{\Gamma \vdash \holconst{Nvar}\;x \approx_\alpha \holconst{Nvar}\;x} \quad
+    \inferrule*{
+      \Gamma\;x = \holconst{Some}\;y
+    }{\Gamma \vdash \holconst{Nvar}\;x \approx_\alpha \holconst{Nvar}\;y}
+  \]
+  \[
+    \inferrule*{
+      \envadd\Gamma{[ x \mapsto y ]} \vdash t \approx_\alpha u
+    }{\Gamma \vdash \Lambda x.\; t \approx_\alpha \Lambda y.\; u} \quad
+    \inferrule*{
+      \Gamma \vdash t_1 \approx_\alpha u_1 \\
+      \Gamma \vdash t_2 \approx_\alpha u_2
+    }{\Gamma \vdash \app{t_1}{t_2} \approx_\alpha \app{u_1}{u_2}}
+  \]
+  \caption{$\alpha$-equivalence between terms}
+  \label{code:intermediate:named:alpha}
+\end{code}
+
+As already indicated earlier, the correctness property of the opposite direction requires $\alpha$-equivalence.
+Its definition is given in \cref{code:intermediate:named:alpha}.
+A slight deviation from literature is that I use an explicit context of renamings instead of substituting directly.
+This is merely for convenience.
+Two terms can be said to be $\alpha$-equivalent if there is a context of renamings that transforms one into the other.
+
+\begin{corollary}[Reflexivity]\label{thm:intermediate:named:refl}
+  For all terms $t$, $[] \vdash t \approx_\alpha t$ holds.
+\end{corollary}
+
+\noindent
+The correctness property can now be phrased accordingly.
+Because the term that is translated may not be closed, it is necessary for this direction to take contexts into account:
+
+\begin{lemma}
+  Let $t$ be a \holtype{nterm} and $\Gamma$, $\Gamma'$ be contexts with the same length and $\holconst{frees}\;t \subseteq \Gamma$.
+  Then, the translation of $t$ from \holtype{nterm} to \holtype{term} (with context $\Gamma'$) and back (with context $\Gamma$) is $\alpha$-equivalent to $t$.
+  The corresponding renaming is the pairing of $\Gamma$ and $\Gamma'$.
+  Formally:
+  \[ \holconst{map\_of}\;(\holconst{zip}\;\Gamma\;\Gamma') \vdash \holconst{Fresh.run}\;(\holconst{term\_to\_nterm}\;\Gamma'\;(\holconst{nterm\_to\_term}\;\Gamma\;t))\;S \approx_\alpha t \]
+\end{lemma}
+
+\noindent
+Note that this lemma also constructs the renaming.
+For closed terms, the following simplified corollary can be obtained:
+
+\begin{corollary}
+  Let $t$ be a closed \holtype{nterm}.
+  Then, the translation of $t$ from \holtype{nterm} to \holtype{term} and back is $\alpha$-equivalent to $t$:
+  \[ [] \vdash \holconst{Fresh.run}\;(\holconst{term\_to\_nterm}\;[]\;(\holconst{nterm\_to\_term}\;[]\;t))\;S \approx_\alpha t \]
+\end{corollary}
+
+\noindent
+Furthermore, it is possible to prove that two translation runs from \holconst{term} to \holconst{nterm} with different contexts yield $\alpha$-equivalent terms.
+
+\begin{lemma}
+  Let $\Gamma_1$ and $\Gamma_2$ be two contexts with the same length such that both $\Gamma_1$ and $\Gamma_2$ have no duplicate elements.
+  Let $t$ be a closed \holtype{term}.
+  Let $s_1$ and $s_2$ be names that are fresh in $\Gamma_1$ and $\Gamma_2$, respectively.
+  Then:
+  \[ \holconst{map\_of}\;(\holconst{zip}\;\Gamma_1\;\Gamma_2) \vdash \holconst{fst}\;(\holconst{term\_to\_nterm}\;\Gamma_1\;t\;s_1) \approx_\alpha \holconst{fst}\;(\holconst{term\_to\_nterm}\;\Gamma_2\;t\;s_2) \]
+\end{lemma}
+%
+\remark*{
+  In the above statement, \holconst{term\_to\_nterm} is used as a function with three arguments, because \holtype{fresh} is implemented as a state monad, which is in turn a function of one argument.
+  In this case, the third argument is a simple \holtype{string}.
+  \holconst{Fresh.run} is not used, because it expects a $\holtype{string}\;\holtype{set}$.
+
+  An instantiated version of this lemma with $\Gamma_1 = \Gamma_2 = []$ would make little sense: it yields a special case of \cref{thm:intermediate:named:refl}.
+}
+
+\noindent
+As usual, the proof proceeds by generalization and subsequent induction over the term.
+
+In the remainder of this section, I will explain the relationship between terms and their translations with respect to matching and substitution.
+
+\begin{definition}\label{def:intermediate:named:rel}
+  A \holtype{term} $t$ and an \holtype{nterm} $u$ are related wrt $\Gamma$ if $t = \holconst{nterm\_to\_term}\;\Gamma\;u$.
+\end{definition}
+
+\begin{corollary}\label{thm:intermediate:named:rel}
+  \cref{def:intermediate:named:rel} is a strong structural term relation (§\ref{sec:terms:algebra:thy:preds}) for all $\Gamma$.
+\end{corollary}
+
+\noindent
+From this corollary, it follows that matching behaves identically on terms and their translations.
+However, there are no generic lemmas over substitution (§\ref{sec:terms:algebra:thy:preds}).
+
+\begin{lemma}\label{thm:intermediate:named:subst}
+  Let $\sigma_1$ and $\sigma_2$ be closed and related environments wrt $\Gamma$.
+  If $\Gamma$ and the domain of $\sigma_1$ are disjoint, then \holconst{nterm\_to\_term} and \holconst{subst} commute.
+  Formally:
+  \[ \holconst{subst}\;\sigma_1\;(\holconst{nterm\_to\_term}\;\Gamma\;t) = \holconst{nterm\_to\_term}\;\Gamma\;(\holconst{subst}\;\sigma_2\;t) \]
+\end{lemma}
+
+\noindent
+The proof proceeds by induction on $t$ and crucially depends on the $\sigma_i$ being closed.
+
+The next lemma establishes a connection between $\beta$-reduction (§\ref{sec:background:rewriting}) and substitution:
+
+\begin{lemma}\label{thm:intermediate:named:beta}
+  If $t'$ is closed, then:
+  \[
+    \holconst{nterm\_to\_term}\;\Gamma\;(\holconst{subst}\;\left[x \mapsto t'\right]\;t) =
+    (\holconst{nterm\_to\_term}\;(x \cons \Gamma)\;t) [\holconst{nterm\_to\_term}\;\Gamma\;t']
+  \]
+\end{lemma}
+
+\noindent
+Informally speaking, this means that one can either substitute $t'$ for $x$ in $t$ and then translate the resulting term back, or translate both $t$ and $t'$ back and then perform $\beta$-reduction.
+
+\subsection{Compilation, correctness, \& completeness}
+\label{sec:intermediate:named:compilation}
+
+Having established a low-level translation function from \holtype{term} to \holtype{nterm} that invents bound variable names based on names from a context, it remains to explain how full rule sets are compiled.
+The idea is rather straightforward:
+translate the right-hand side of all rules while leaving the left-hand sides unchanged.
+The left-hand side is still represented as \holtype{term}, for the reason outlined in §\ref{sec:terms:algebra:matching}.
+
+Formally, compilation is defined as follows:
+\[
+  \holconst{compile}\;\R = \{ (p, \holconst{Fresh.run}\;(\holconst{term\_to\_nterm}\;[]\;t)\;(\holconst{all\_consts} \cup \holconst{frees}\;p)) \mid (p, t) \in \R \}
+\]
+%
+The fresh monad receives two sets of known names.
+Naturally, names bound by the patterns must be avoided ($\holconst{frees}\;p$).
+To avoid collisions of names further down in the compilation pipeline, additionally all the known constant names are supplied (\holconst{all\_consts}).
+Recall that that set comprises two subsets (\cref{code:deep:constructors}):
+\begin{itemize}
+  \item the names of all constructors from the \holconst{constructors} locale
+  \item the names of all equation heads ($\holconst{heads\_of}\;\R$)
+\end{itemize}
+%
+The side conditions of the locale (§\ref{sec:intermediate:wellformed}) ensure that $\holconst{heads\_of}\;\R$ is equal to the set \holconst{heads} defined during deep embedding (\cref{code:deep:constructors}).
+
+\begin{corollary}[Invariance of heads]
+  The heads of $\R$ remain unchanged after compilation.
+\end{corollary}
+
+\begin{theorem}[Correctness of compilation]\label{thm:intermediate:named}
+  Assuming a step can be taken with the compiled rule set, this step can be reproduced with the original rule set.
+  \[
+    \inferrule{
+      \rewrite{\holconst{compile}\;\R}{t}{t'} \\
+      \holconst{closed}\;t
+    }{
+      \rewrite\R{\holconst{nterm\_to\_term}\;t}{\holconst{nterm\_to\_term}\;t'}
+    }
+  \]
+\end{theorem}
+
+\begin{proof}
+  By rule induction over the semantics (\cref{code:intermediate:named}).
+  The interesting cases are \textsc{Step} and \textsc{Beta}.
+
+  \begin{induction}
+    \item[Step]
+      This follows from \cref{thm:intermediate:named:rel,thm:intermediate:named:subst}.
+    \item[Beta]
+      This follows from \cref{thm:intermediate:named:beta}. \qedhere
+  \end{induction}
+\end{proof}
+
+\begin{theorem}[Completeness of compilation]\label{thm:intermediate:named-compl}
+  Assuming a step can be taken in the original rule set, this step can be reproduced in the compiled rule set to obtain an $\alpha$-equivalent term.
+  Formally: if $\rewrite\R{t}{t'}$ where $t$ is closed and wellformed, then there is a term $u'$ such that:
+  \[
+    \rewrite{\holconst{compile}\;\R}{\holconst{term\_to\_nterm}\;[]\;t\;s}{u'} \wedge [] \vdash u' \approx_\alpha \holconst{term\_to\_nterm}\;[]\;t'\;s'
+  \]
+\end{theorem}

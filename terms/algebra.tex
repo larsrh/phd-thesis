@@ -1,0 +1,883 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{An algebra for terms}
+\label{sec:terms:algebra}
+
+\authorship{
+  Portions of this section appear in the AFP entry \citetitle{hupel2019algebra}, authored by \citeauthor{hupel2019algebra}~\cite{hupel2019algebra}.
+}
+
+\noindent
+Terms can be thought of as consisting of a \emph{generic} (free variables, constants, application) and a \emph{specific} part.
+The generic part is shared, whereas the specific part varies across different term types.
+This opens the opportunity to use a type class to abstract over these types.%
+\thyrefmy{CakeML_Codegen}{Term_Class}
+In this section, I introduce the \holclass{term}\holclassindex{term} class, explain its axioms, and describe the resulting theory.
+
+\remark*{
+  In Isabelle, classes and types live in different namespaces. The \holtype{term} type and the \holtype{term} class are separate entities.
+}
+
+\subsection{Basic term operations}
+
+\begin{code}[t]
+  \setlength{\abovedisplayskip}{5pt}
+  \setlength{\belowdisplayskip}{5pt}
+  \setlength{\abovedisplayshortskip}{5pt}
+  \setlength{\belowdisplayshortskip}{5pt}
+  \begin{subcode}{.5\linewidth}
+    \begin{align*}
+      \holconst{app}\;t_1\;t_2 &\neq \holconst{const}\;x \\
+      \holconst{app}\;t_1\;t_2 &\neq \holconst{free}\;x \\
+      \holconst{const}\;y &\neq \holconst{free}\;x
+    \end{align*}\holconstindex{app}\holconstindex{const}\holconstindex{free}
+    \begin{align*}
+      \holconst{free}\;x_1 = \holconst{free}\;x_2 &\implies x_1 = x_2 \\
+      \holconst{const}\;x_1 = \holconst{const}\;x_2 &\implies x_1 = x_2 \\
+      \holconst{app}\;t_1\;t_2 = \holconst{app}\;u_1\;u_2 &\implies t_1 = u_1 \wedge t_2 = u_2
+    \end{align*}
+    \caption{Free constructors}
+    \label{code:terms:algebra:basic:free}
+  \end{subcode}\hfill
+  \begin{subcode}{.46\linewidth}
+    \begin{align*}
+      \holconst{unfree}\;(\holconst{free}\;x) &= \holconst{Some}\;x \\
+      \holconst{unconst}\;(\holconst{const}\;x) &= \holconst{Some}\;x \\
+      \holconst{unapp}\;(\holconst{app}\;t_1\;t_2) &= \holconst{Some}\;(t_1, t_2)
+    \end{align*}\holconstindex{unapp}\holconstindex{unconst}\holconstindex{unfree}
+    \begin{align*}
+      \holconst{unfree}\;t = \holconst{Some}\;x &\implies t = \holconst{free}\;x \\
+      \holconst{unconst}\;t = \holconst{Some}\;x &\implies t = \holconst{const}\;x \\
+      \holconst{unapp}\;t = \holconst{Some}\;(t_1, t_2) &\implies t = \holconst{app}\;t_1\;t_2
+    \end{align*}
+    \caption{Destructors}
+  \end{subcode}
+
+  \begin{subcode}{\linewidth}
+    \begin{minipage}{.48\linewidth}
+      \begin{align*}
+        \holconst{frees}\;(\holconst{free}\;x) &= \{ x \} \\
+        \holconst{frees}\;(\holconst{const}\;x) &= \emptyset \\
+        \holconst{frees}\;(\holconst{app}\;t_1\;t_2) &= \holconst{frees}\;t_1 \cup \holconst{frees}\;t_2
+      \end{align*}\holconstindex{frees}
+    \end{minipage}\hfill
+    \begin{minipage}{.48\linewidth}
+      \begin{align*}
+        \holconst{consts}\;(\holconst{free}\;x) &= \emptyset \\
+        \holconst{consts}\;(\holconst{const}\;x) &= \{ x \} \\
+        \holconst{consts}\;(\holconst{app}\;t_1\;t_2) &= \holconst{consts}\;t_1 \cup \holconst{consts}\;t_2
+      \end{align*}\holconstindex{consts}
+    \end{minipage}
+
+    \caption{Partial definitions}
+  \end{subcode}
+
+  \begin{subcode}{\linewidth}
+    \[ \holconst{size}\;(\holconst{app}\;t_1\;t_2) = 1 + \holconst{size}\;t_1 + \holconst{size}\;t_2 \]
+    \caption{Wellfoundedness}
+    \label{code:terms:algebra:basic:size}
+  \end{subcode}
+  \caption{Axioms for the basic operations of the \holclass{term} class}
+  \label{code:terms:algebra:basic}
+\end{code}
+
+\begin{code}
+  \begin{align*}
+    \holconst{const} &= \holconst{Const} & \holconst{frees}\;(\holconst{Abs}\;t) &= \holconst{frees}\;t\\
+    \holconst{free} &= \holconst{Free} & \holconst{frees}\;(\holconst{Bound}\;n) &= \emptyset\\
+    \holconst{app} &= \holconst{App} & \holconst{subst}\;\sigma\;(\holconst{Abs}\;t) &= \holconst{Abs}\;(\holconst{subst}\;\sigma\;t) \qquad\phantom{foo} \\
+    \holconst{consts}\;(\holconst{Abs}\;t) &= \holconst{consts}\;t & \holconst{subst}\;\sigma\;(\holconst{Bound}\;n) &= \holconst{Bound}\;n\\
+    \holconst{consts}\;(\holconst{Bound}\;n) &= \emptyset \\
+    \omit\rlap{$\holconst{abs\_pred}\;P\;t = (
+      (\forall n.\;t = \holconst{Bound}\;n \implies P\;t) \wedge
+      (\forall t'.\;t = \holconst{Abs}\;t' \implies P\;t' \implies P\;t)
+    )$}
+  \end{align*}
+  \caption{Implementation of the \holclass{term} operations for the \holtype{term} type}
+  \label{code:terms:algebra:inst}
+\end{code}
+
+\begin{definition}
+  A \emph{term type} $\tau$ supports the operations
+  \begin{align*}
+    \holtypejudgement{\holconst{const}&}{\holtype{string} \Rightarrow \tau} & \holtypejudgement{\holconst{frees}&}{\tau \Rightarrow \holtype{string}\;\holtype{set}} \\
+    \holtypejudgement{\holconst{free}&}{\holtype{string} \Rightarrow \tau} & \holtypejudgement{\holconst{consts}&}{\tau \Rightarrow \holtype{string}\;\holtype{set}} \\
+    \holtypejudgement{\holconst{app}&}{\tau \Rightarrow \tau \Rightarrow \tau} & \holtypejudgement{\holconst{subst}&}{(\holtype{string} \holmap \tau) \Rightarrow \tau \Rightarrow \tau} \\
+    \holtypejudgement{\holconst{abs\_pred}&}{(\tau \Rightarrow \holtype{bool}) \Rightarrow (\tau \Rightarrow \holtype{bool})} & \holtypejudgement{\holconst{size}&}{\tau \Rightarrow \holtype{nat}}
+  \end{align*}\holconstindex{subst}\holconstindex{match}\holconstindex{abs\_pred}
+\end{definition}
+
+\noindent
+The \holconst{const}, \holconst{free}, and \holconst{app} functions are the \emph{generic constructors}\index{generic constructor}, that is, they behave like regular \holcommand{datatype} constructors, but are polymorphic in the constructed type.
+I abbreviate $\holconst{app}\;t_1\;t_2$ as $\app{t_1}{t_2}$.
+Conversely, there are also three corresponding destructors that can be defined in terms of Hilbert's choice operator:
+\[ \holconst{unconst}\;t = (\holkeyword{if}\;\exists x. t = \holconst{const}\;x \;\holkeyword{then}\;\holconst{Some}\;(\holkeyword{SOME}\;x'.\; t = \holconst{const}\;x)\;\holkeyword{else}\;\holconst{None}) \]
+In this formalization, I have instead opted to let instances define destructors directly, which is simpler for execution purposes (see §\ref{sec:background:code} for the advantages).
+
+Consequently, the basic class axioms mandate that the three pairs of constructors and destructors behave -- except for exhaustiveness -- like a \emph{freely constructed} datatype (\cref{code:terms:algebra:basic}) \cite[§3]{blanchette2014datatypes}: they are distinct and injective.
+The \emph{wellfoundedness} axiom is required so that functions over abstract terms that recurse into applications can be proved to be terminating.
+Most other properties that would otherwise be generated by the \holcommand{datatype} package follow from these axioms.
+Also, discriminators can be defined easily by checking if the corresponding destructor returns \holconst{Some}.
+
+The \holconst{frees} and \holconst{consts} functions select the set of free variables and constants in a term.
+For constants, abstractions need not be considered, because they only bind variables.
+The basic axioms strictly prescribe the behaviour of both functions for the generic constructors.
+For convenience, $\holconst{closed}\;t$\holconstindex{const} abbreviates $\holconst{frees}\;t = \emptyset$.
+
+Types defined through \holcommand{datatype} are equipped with a \holconst{size} function that counts the number of constructors in the value.
+\holconst{size} itself is a class constant from the \holconst{size} class.
+Consequently, the \holconst{term} class extends \holconst{size} and assumes that the \holconst{size} constant behaves exactly like expected for \holconst{app}.
+
+The \holconst{subst} function substitutes free variables in a term.
+As arguments, it takes a mapping from names to terms and the term to be substituted.
+
+\remark*{
+  Substituting terms with free variables into a term is underspecified:
+  some axioms (\cref{code:terms:algebra:subst}) require terms to be closed as a precondition.
+  Term types are not required to implement $\alpha$-renaming to prevent capturing of variables.
+  This is consistent with the assumptions on term rewriting outlined in §\ref{sec:background:rewriting}.
+}
+
+\noindent
+Finally, \holconst{abs\_pred} is a partial induction predicate, covering the remaining cases not covered by \holconst{const}, \holconst{free} and \holconst{app}.
+The reasoning behind this and the necessary axiom is explained in §\ref{sec:terms:algebra:subst}.
+
+A sample implementation for the initial term type \holtype{term} (\cref{code:background:rewriting:term}) is given in \cref{code:terms:algebra:inst}.
+For brevity, the cases that are fully specified by the axioms are omitted.
+
+\subsection{Matching}
+\label{sec:terms:algebra:matching}
+
+Taking only the above definitions already admits a generic definition of \keyword{matching} a \keyword{pattern} with a term.
+Importantly, the type of patterns is neither generic, nor a dedicated pattern type; instead, it is \holtype{term} itself.
+I chose this representation for two reasons:
+\begin{enumerate}
+  \item
+    Patterns are a proper subset of terms, with the restriction that no abstractions may occur and there must be at most a single occurrence of any variable (usually known as \keyword{linearity}).
+    The first restriction can be modelled in a datatype, the second cannot.
+    Hence, I define a predicate $\holtypejudgement{\holconst{linear}}{\holtype{term} \Rightarrow \holtype{bool}}$ that captures both properties.
+  \item
+    The logical requirements of patterns do not change throughout -- including the CakeML backend (§\ref{sec:intermediate:cakeml}) -- the formalization.
+    In particular, it is never allowed to match against an abstraction.
+    Consequently, it is not necessary to change types midway through the compilation pipeline.
+\end{enumerate}
+
+\noindent
+The above reasoning notwithstanding, a dedicated \holtype{pat} type is present in the formalization and will be motivated and described in §\ref{sec:terms:types:pat}.
+
+The linearity constraint is represented as a recursive function on \holtype{term}s:
+%
+\begin{lstlisting}[language=Isabelle]
+fun linear :: term $\Rightarrow$ bool where
+linear (Free _) $\biimplies$ True
+linear (Const _) $\biimplies$ True
+linear ($t_1$ $\${}$ $t_2$) $\biimplies$ linear $t_1$ $\wedge$ linear $t_2$ $\wedge$ disjoint (frees $t_1$) (frees $t_2$) $\wedge$ $\neg$ is_free $t_1$
+linear _ $\biimplies$ False
+\end{lstlisting}\holconstindex{linear}
+%
+Equipped with this, it becomes possible to define a generic matching function using monad syntax (§\ref{sec:terms:prelim:monad}):
+%
+\begin{lstlisting}[language=Isabelle]
+fun match :: term $\Rightarrow$ $\alpha$ $\Rightarrow$ (string $\holmap$ $\alpha$) option where
+match (Const //x//) //t// = ||do|| {
+  //y// $\leftarrow$ unconst //t//
+  ||if|| //x// = //y// ||then|| Some [] ||else|| None
+}
+match ($t_1$ $\$$ $t_2$) //u// = ||do|| {
+  ($u_1$, $u_2$) $\leftarrow$ unapp //u//
+  $\sigma_1$ $\leftarrow$ match $t_1$ $u_1$
+  $\sigma_2$ $\leftarrow$ match $t_2$ $u_2$
+  Some ($\envadd{\sigma_1}{\sigma_2}$)
+}
+match (Free //s//) //t// = Some [//s// $\mapsto$ //t//]
+match _ _ = None
+\end{lstlisting}\holconstindex{match}
+%
+The first argument denotes the pattern, the second the \keyword{object}.
+Matching yields an optional mapping of type $\holtype{string} \holmap \alpha$ from free variable names to terms.
+The object is traversed according to the destructors as defined by a concrete implementation of the \holclass{term} type.
+In particular, it is only necessary to distinguish between constants, applications, and ``everything else''.
+Taking free variables into account would enable defining a generic unification algorithm, which is not needed here, but would be an opportunity for future work.
+
+\remark*{
+  There are two notable deviations from term rewriting literature:
+  \begin{enumerate}
+    \item
+      The result of matching is not directly a substitution $\holtypejudgement{\sigma}{\alpha \Rightarrow \alpha}$, but rather a mapping that needs to be applied by a substitution function.
+    \item
+      When joining the sub-results of matching a function application, there is no check that they are consistent.
+      Luckily, consistency is a consequence of linearity.
+      The result of matching any object against a non-linear pattern is unspecified; but no target language of the code generator even supports it.
+  \end{enumerate}
+}
+
+\begin{corollary}[Domain of matching]\label{thm:terms:algebra:match-dom}
+  If the object matches a pattern $t$ with environment $\sigma$, then $\holconst{dom}\;\sigma = \holconst{frees}\;t$.
+\end{corollary}
+
+\noindent
+Naturally, the definitions of \holconst{linear} and \holconst{match} can be lifted to a list of terms:
+%
+\begin{lstlisting}[language=Isabelle]
+definition freess :: $\alpha$ list $\Rightarrow$ string set where
+freess //ts// = $\bigcup$ (set (map frees //ts//))
+
+fun linears :: term list $\Rightarrow$ bool where
+linears [] $\biimplies$ True
+linears (//t// # //ts//) $\biimplies$ linear //t// $\wedge$ fdisjoint (frees //t//) (freess //ts//) $\wedge$ linears //ts//
+
+fun matchs :: term list $\Rightarrow$ $\alpha$ list $\Rightarrow$ (string $\holmap$ $\alpha$) option where
+matchs [] [] = Some []
+matchs (//t// # //ts//) (//u// # //us//) = ||do|| {
+  $\sigma_1$ $\leftarrow$ match //t// //u//
+  $\sigma_2$ $\leftarrow$ matchs //ts// //us//
+  Some ($\envadd{\sigma_1}{\sigma_2}$)
+}
+matchs _ _ = None
+\end{lstlisting}\holconstindex{linears}\holconstindex{matchs}
+%
+An obvious consequence is that successful matching of two lists requires that both lists have the same length.
+
+\subsection{Substitution axioms}
+\label{sec:terms:algebra:subst}
+
+\begin{code}[t]
+  \setlength{\belowdisplayskip}{5pt}
+  \setlength{\belowdisplayshortskip}{5pt}
+  \begin{subcode}{\linewidth}
+    \begin{align*}
+      \holconst{subst}\;\sigma\;(\holconst{const}\;x) &= \holconst{const}\;x \\
+      \holconst{subst}\;\sigma\;(\holconst{free}\;x) &= (\holkeyword{if}\;x \in \holconst{dom}\;\sigma\;\holkeyword{then}\;\sigma\;x\;\holkeyword{else}\;\holconst{free}\;x) \\
+      \holconst{subst}\;\sigma\;(\app{t_1}{t_2}) &= \app{\holconst{subst}\;\sigma\;t_1}{\holconst{subst}\;\sigma\;t_2}
+    \end{align*}
+    \caption{Partial definition}
+    \label{code:terms:algebra:subst:def}
+  \end{subcode}
+
+  \begin{subcode}{\linewidth}
+    \begin{align}
+      \holconst{id\_env}\;\sigma &\implies&\holconst{subst}\;\sigma\;t &= t
+      \label{thm:terms:algebra:subst-id} \\
+      x \notin \holconst{frees}\;t &\implies& \holconst{subst}\;(\sigma - x)\;t &= \holconst{subst}\;\sigma\;t
+      \label{thm:terms:algebra:subst-drop} \\
+      \holconst{closed}\;\sigma_2 \wedge \holconst{disjoint}\;\sigma_1\;\sigma_2 &\implies& \holconst{subst}\;(\envadd{\sigma_1}{\sigma_2})\;t &= \holconst{subst}\;\sigma_1\;(\holconst{subst}\;\sigma_2\;t)
+      \label{thm:terms:algebra:subst-twice} \\
+      \holconst{closed}\;\sigma &\implies& \holconst{frees}\;(\holconst{subst}\;\sigma\;t) &= \holconst{frees}\;t - \holconst{dom}\;\sigma
+      \label{thm:terms:algebra:subst-vars} \\
+      &&\holconst{consts}\;(\holconst{subst}\;\sigma\;t) &= \holconst{consts}\;t \cup \!\!\!\! \bigcup\limits_{\substack{x \in \holconst{frees}\;t \\ x \in \holconst{dom}\;\sigma}} \!\!\!\! \holconst{consts}\;(\sigma\;x)
+      \label{thm:terms:algebra:subst-consts}
+    \end{align}
+    \setlength{\abovedisplayskip}{0pt}
+    \setlength{\abovedisplayshortskip}{0pt}
+    \begin{align*}
+      \text{where:} &&\holconst{id\_env}\;\sigma &= (\forall x\;t.\;\sigma\;x = \holconst{Some}\;t \implies t = \holconst{free}\;x) \\
+      &&\holconst{closed}\;\sigma &= (\forall t \in \holconst{range}\;\sigma.\;\holconst{frees}\;t = \emptyset) \\
+      &&\holconst{disjoint}\;\sigma_1\;\sigma_2 &= \holconst{disjoint}\;(\holconst{dom}\;\sigma_1)\;(\holconst{dom}\;\sigma_2)
+    \end{align*}\holconstindex{closed}
+    \caption{Non-trivial properties}
+    \label{code:terms:algebra:subst:props}
+  \end{subcode}
+  \caption{Axioms for the \holconst{subst} operation}
+  \label{code:terms:algebra:subst}
+\end{code}
+
+\noindent
+In contrast to matching, substitution cannot solely be defined in terms of the generic constructors of a term type, because the \holclass{term} class provides no combinators to work with abstractions.
+Instead, \cref{code:terms:algebra:subst} provides two sets of axioms:
+partial definition for the constructor cases, and additional, non-trivial properties that any implementation must adhere to.
+
+To make proofs of the latter simpler, it is only required to prove them for the non-generic cases.
+This works by requiring instantiations to provide the higher-order predicate \holconst{abs\_pred}, together with the following axiom:
+\begin{align}
+  \inferrule{
+    \forall x.\;P\;(\holconst{const}\;x) \\
+    \forall x.\;P\;(\holconst{free}\;x) \\
+    \forall t_1\;t_2.\;P\;t_1 \implies P\;t_2 \implies P\;(\app{t_1}{t_2}) \\
+    \forall t.\;\holconst{abs\_pred}\;P\;t
+  }{P\;t}
+  \label{thm:terms:algebra:induct}
+\end{align}
+
+\noindent
+This axiom resembles an induction schema.
+It also explains why \holconst{abs\_pred} was introduced earlier as a partial induction predicate:
+it is used to establish exhaustiveness of the generic and specific parts of the concrete term type.
+Compare this to the induction principle of \holtype{term}:
+\[
+  \inferrule{
+    \forall x.\;P\;(\holconst{Const}\;x) \\
+    \forall x.\;P\;(\holconst{Free}\;x) \\
+    \forall t_1\;t_2.\;P\;t_1 \implies P\;t_2 \implies P\;(\holconst{App}\;t_1\;t_2) \\
+    \forall t.\;P\;t \implies P\;(\holconst{Abs}\;t) \\
+    \forall x.\;P\;(\holconst{Bound}\;x)
+  }{P\;t}
+\]
+The \holconst{abs\_pred} predicate covers exactly the cases for \holconst{Abs} and \holconst{Bound}.
+
+Interestingly, this axiom enables fully generic induction proofs on abstract terms.
+The principle can be illustrated with an example property from \cref{code:terms:algebra:subst:props}.
+The actual class axiom is not \cref{thm:terms:algebra:subst-id}:
+\[
+  \holconst{id\_env}\;\sigma \implies \holconst{subst}\;\sigma\;t = t
+\]
+but rather the more technical
+\[
+  \holconst{abs\_pred}\;(\lambda t.\; \forall \sigma.\; \holconst{id\_env}\;\sigma \implies \holconst{subst}\;t\;\sigma = t)\;t
+\]
+where the desired property is explicitly quantified and wrapped into \holconst{abs\_pred}.
+This is similar for the other axioms: all of them are phrased in terms of \holconst{abs\_pred}.
+The desired properties as given in \cref{code:terms:algebra:subst:props} can then be derived by induction using the above schema (\cref{thm:terms:algebra:induct}), together with the partial definitions (\cref{code:terms:algebra:subst:def}).
+The notable exception is \cref{thm:terms:algebra:subst-twice}, which requires more background theory and will be revisited later (§\ref{sec:terms:algebra:thy:subst}).
+
+It remains to explain how the technical \holconst{abs\_pred} axioms are proved in the instantiations.
+In the case of \holtypejudgement{\holtype{term}}{\holclass{term}}, they can be easily discharged by simplification, because there, substitution needs not deal with bound variable names (\cref{code:terms:algebra:inst}).
+For other term types, these properties require more complicated proofs, which will be explained in §\ref{sec:terms:types}.
+
+\subsection{Derived operations \& theory}
+\label{sec:terms:algebra:thy}
+
+Based on the operations specified in the \holclass{term} class, a wide range of polymorphic functions can be defined.
+
+\subsubsection{Combinators}
+To simplify definition of functions performing a case analysis on terms, a \holkeyword{case} combinator is useful.
+Its structure follows \holkeyword{case} combinators generated by the \holcommand{datatype} package; however, it has to ensure exhaustiveness by taking an additional default:
+%
+\begin{lstlisting}[language=Isabelle]
+definition term_cases ::
+  (string $\Rightarrow$ $\beta$) $\Rightarrow$ (string $\Rightarrow$ $\beta$) $\Rightarrow$ ($\alpha$ $\Rightarrow$ $\alpha$ $\Rightarrow$ $\beta$) $\Rightarrow$ $\beta$ $\Rightarrow$ $\alpha$ $\Rightarrow$ $\beta$ where
+term_cases //if_const// //if_free// //if_app// //otherwise// //t// =
+  (||case|| unconst //t// ||of||
+    Some //name// $\Rightarrow$ //if_const// //name// |
+    None $\Rightarrow$ (||case|| unfree //t// ||of||
+      Some //name// $\Rightarrow$ //if_free// //name// |
+      None $\Rightarrow$
+        (||case|| unapp //t// ||of||
+          Some (//t//, //u//) $\Rightarrow$ //if_app// //t// //u//
+        | None $\Rightarrow$ //otherwise//)))
+\end{lstlisting}\holconstindex{term\_cases}
+%
+Equipped with this function and corresponding congruence rule (§\ref{sec:preproc:dict:partial:cong}), it becomes possible to easily define a conversion functions between arbitrary term types:
+%
+\begin{lstlisting}[language=Isabelle]
+fun convert_term :: $\alpha$ $\Rightarrow$ $\beta$ where
+convert_term //t// = term_cases const free ($\lambda$//t// //u//. app (to_term //t//) (to_term //u//)) undefined //t//
+\end{lstlisting}\holconstindex{convert\_term}
+%
+This function is partially specified (in the sense of §\ref{sec:preproc:dict:partial}).
+Its domain can be characterized by the following function:
+%
+\begin{lstlisting}[language=Isabelle]
+fun no_abs :: $\alpha$ $\Rightarrow$ bool where
+no_abs //t// = term_cases ($\lambda$_. True) ($\lambda$_. True) ($\lambda$//t// //u//. no_abs //t// $\wedge$ no_abs //u//) False //t//
+\end{lstlisting}\holconstindex{no\_abs}
+%
+Thanks to the wellfoundedness axiom (\cref{code:terms:algebra:basic:size}), termination of such functions can be proved automatically.
+
+\remark*{
+  The \holconst{no\_abs} function is a misnomer:
+  judging by the name, it should be true for a term $t$ that does not contain an abstraction.
+  But for the \holtype{term} instantiation, it is also false if the term contains a bound variable.
+}
+
+\begin{lemma}
+  The image of \holconst{convert\_term} over its domain is its domain.
+\end{lemma}
+
+\begin{lemma}
+  Assuming the arguments are in its domain, \holconst{convert\_term} is
+  \begin{itemize}
+    \item idempotent,
+    \item injective, and
+    \item for all type instantiations $\alpha = \beta$, the identity function.
+  \end{itemize}
+\end{lemma}
+
+\begin{proof}
+  Injectivity follows from the injectivity of the generic constructors (\cref{code:terms:algebra:basic:free}).
+\end{proof}
+
+\begin{lemma}[Preservation of matches]\label{thm:terms:algebra:match-convert}
+  \[ \holconst{match}\;t\;u = \holconst{Some}\;\sigma \implies \holconst{match}\;t\;(\holconst{convert\_term}\;u) = \holconst{Some}\;(\holconst{map}\;\holconst{convert\_term}\;\sigma) \]
+\end{lemma}
+
+\noindent
+Term conversions that are restricted to terms not containing abstractions becomes useful in parts of the compiler with complicated correspondence relations between terms.
+It can be used to show that on terms without abstractions, they collapse to \holconst{convert\_term} (or equality, e.g. §\ref{sec:intermediate:elim:corr}).
+
+\subsubsection{Applicative term structure}
+\label{sec:terms:algebra:thy:applicative}
+
+Function applications with multiple arguments can be expressed as repeated application with a single argument.
+Operations to create and destructure those are named according to Isabelle terminology:\holconstindex{list\_comb}\holconstindex{strip\_comb}
+%
+\begin{lstlisting}[language=Isabelle]
+fun list_comb :: $\alpha$ $\Rightarrow$ $\alpha$ list $\Rightarrow$ $\alpha$ where
+list_comb //f// [] = //f//
+list_comb //f// (//t// # //ts//) = list_comb (app //f// //t//) //ts//
+
+fun strip_comb :: $\alpha$ $\Rightarrow$ $\alpha$ $\times$ $\alpha$ list where
+strip_comb //t// =
+  (||case|| unapp //t// ||of||
+    Some (//t//, //u//) $\Rightarrow$ (||let|| (//f//, //args//) = strip_comb //t// ||in|| (//f//, //args// @ [//u//]))
+  | None $\Rightarrow$ (//t//, []))
+\end{lstlisting}\holconstindex{list\_comb}\holconstindex{strip\_comb}
+%
+The most common variant of \holconst{list\_comb} -- a constant is used as function -- is abbreviated with $\$\$$, i.e., $\listcomb{f}{\mathit{xs}} = \holconst{list\_comb}\;(\holconst{const}\;f)\;\mathit{xs}$.\index{\$\$@\$\$ (symbol)}
+Left-hand sides of defining equations are structured in such a way, where $\mathit{xs}$ are patterns.
+%
+\begin{lemma}
+  \holconst{strip\_comb} and \holconst{list\_comb} are inverses:
+  \[ \holconst{list\_comb}\;(\holconst{fst}\;(\holconst{strip\_comb}\;t))\;(\holconst{snd}\;(\holconst{strip\_comb}\;t)) = t \]
+  \vskip-2em
+  \begin{align*}
+    \holconst{strip\_comb}\;(\holconst{list\_comb}\;f\;\mathit{ys}) &= (\holconst{fst}\;(\holconst{strip\_comb}\;f),\holconst{snd}\;(\holconst{strip\_comb}\;f) \mathbin{@} ys) \\
+    \holconst{strip\_comb}\;(\listcomb{f}{\mathit{ys}}) &= (\holconst{const}\;f, \mathit{ys})
+  \end{align*}
+\end{lemma}
+
+\noindent
+Observe that \holconst{list\_comb} produces applications that are nested to the left.
+With the following definition, it is possible to prove that \holconst{list\_comb} is injective in its second argument:
+%
+\begin{definition}[Left nesting]
+  A term has a \emph{left nesting} of $n$ if \holconst{None} is reached after $n$ recursive applications of \holconst{unapp}, proceeding with the left branch.
+  Formally:
+  \[
+    \holconst{left\_nesting}\;t = \holconst{term\_cases}\;(\lambda\_.\;0)\;(\lambda\_.\;0)\;(\lambda t\;u.\;1 + \holconst{left\_nesting}\;t)\;0\;t
+  \]
+\end{definition}\holconstindex{left\_nesting}
+%
+\begin{lemma}[Conditional injectivity]
+  Assuming that $\holconst{left\_nesting}\;f = \holconst{left\_nesting}\;g$ and $\holconst{list\_comb}\;f\;\mathit{xs} = \holconst{list\_comb}\;g\;\mathit{ys}$, then $f = g$ and $\mathit{xs} = \mathit{ys}$.
+\end{lemma}
+%
+\begin{proof}
+  By induction on $\mathit{xs}$, generalizing all other variables.
+  Injectivity follows from \cref{code:terms:algebra:basic:free}.
+\end{proof}
+%
+\begin{corollary}[Injectivity]\label{thm:terms:algebra:inj}
+  The (partially applied) function $\holconst{list\_comb}\;f$ is injective.
+\end{corollary}
+%
+\begin{corollary}\label{thm:terms:algebra:semi-inj}
+  If $\mathit{xs}$ and $\mathit{ys}$ have the same length and $\holconst{list\_comb}\;f\;\mathit{xs} = \holconst{list\_comb}\;g\;\mathit{ys}$, then $f = g$ and $\mathit{xs} = \mathit{ys}$.
+\end{corollary}
+
+\noindent
+Of course, it is possible to establish a connection between $\holconst{match}$ and $\holconst{matchs}$ using $\holconst{list\_comb}$:
+%
+\begin{lemma}\label{thm:terms:algebra:match-matchs}
+  \[ \holconst{match}\;(\listcomb{\mathit{name}}{\mathit{xs}})\;(\listcomb{\mathit{name}}{\mathit{ys}}) = \holconst{matchs}\;\mathit{xs}\;\mathit{ys} \]
+\end{lemma}
+
+\noindent
+This lemma is a consequence of a more general statement for arbitrary functions, which is too technical to be reproduced here.
+Observe that this lemma requires the instantiation $\holtypejudgement{\holtype{term}}{\holclass{term}}$, because it uses $\holconst{list\_comb}$ as a pattern.
+But like the other results on $\holconst{list\_comb}$, it is polymorphic (here: in $\holtypejudgement{\mathit{ys}}{\holtypejudgement{\alpha}{\holclass{term}}}$).
+
+\subsubsection{Syntactic predicates and relations}
+\label{sec:terms:algebra:thy:preds}
+
+\begin{figure}[t]
+  \tikzstyle{block} = [rectangle, fill=blue!10, text width=11em, text centered, node distance=2cm, minimum height=2em]
+  \tikzstyle{explanation} = [rectangle, node distance=8cm, align=left, fill=green!10, minimum width=9.5cm, minimum height=3.5em, anchor=west, text width=9cm]
+  \tikzstyle{line} = [draw, -latex', thick]
+  \tikzstyle{explline} = [draw, densely dashed, thick, color=black!40]
+  \centering
+  \begin{tikzpicture}
+    \node [block] (and) {\holconst{simple\_syntactic\_and}};
+    \node [block, below of=and, node distance=3cm] (struct) {\holconst{term\_struct\_rel}};
+    \node [block, below of=struct, node distance=3cm] (struct-strong) {\holconst{term\_struct\_rel\_strong}};
+
+    \path [line] (struct-strong) -- (struct);
+
+    \node [explanation, right of=and] (expland) {
+      $\holtypejudgement{P}{\alpha \Rightarrow \holtype{bool}}$ \\
+      $P\;(\app t u) = P\;t \wedge P\;u$
+    };
+    \path [explline] (and) -- (expland);
+
+    \node [explanation, right of=struct] (explstruct) {
+      $\holtypejudgement{P}{\alpha \Rightarrow \beta \Rightarrow \holtype{bool}}$ \\
+      $P\;t\;(\holconst{const}\;x) \implies t = \holconst{const}\;x$ \\
+      $P\;(\holconst{const}\;x)\;(\holconst{const}\;x)$ \\
+      $P\;t\;(\app{u_1}{u_2}) \implies \exists t_1\;t_2.\;t = \app{t_1}{t_2} \wedge P\;t_1\;u_1 \wedge P\;t_2\;u_2$ \\
+      $P\;t_1\;u_1 \implies P\;t_2\;u_2 \implies P\;(\app{t_1}{t_2})\;(\app{u_1}{u_2})$
+    };
+    \path [explline] (struct) -- (explstruct);
+
+    \node [explanation, right of=struct-strong] (explstruct-strong) {
+      $P\;(\holconst{const}\;x)\;t \implies t = \holconst{const}\;x$ \\
+      $P\;(\app{u_1}{u_2})\;t \implies \exists t_1\;t_2.\;t = \app{t_1}{t_2} \wedge P\;t_1\;u_1 \wedge P\;t_2\;u_2$
+    };
+    \path [explline] (struct-strong) -- (explstruct-strong);
+
+    \node [above of=and, node distance=1cm] {\bfseries Locale};
+    \node [above of=expland, node distance=1cm] {\bfseries Parameters \& Assumptions};
+  \end{tikzpicture}
+
+  \small \tikz[baseline=-.3em] \path[line] (0, 0) -- (1, 0); sublocale
+
+  \caption{Syntactic locales on terms}
+  \label{fig:terms:algebra:locales}
+\end{figure}
+
+\noindent
+Predicates and relations on term types that can follow a simple syntactic structure admit lifting of theorems through \holconst{match}.
+\cref{fig:terms:algebra:locales} gives an overview over the locales and their relationships.
+
+\begin{corollary}
+  The predicates \holconst{closed} and \holconst{no\_abs} implement \holconst{simple\_syntactic\_and}.
+\end{corollary}
+
+\begin{lemma}\label{thm:terms:algebra:preds:match}
+  For all predicates $P$ implementing \holconst{simple\_syntactic\_and}:
+  If an object $t$ for which $P\;t$ holds matches a pattern with resulting environment $\sigma$, then $P$ holds for the range of $\sigma$.
+\end{lemma}
+
+\begin{proof}
+  By induction on the termination relation of \holconst{match}.
+  The object gets decomposed only according to \holconst{unapp}.
+  If $P$ holds for the entire object, it also holds for all such sub-terms.
+\end{proof}
+
+\noindent
+The assumptions of \holconst{term\_struct\_rel} are right-biased:
+it means that the structure of the second argument determines the structure of the first argument.
+The locale \holconst{term\_struct\_rel\_\allowbreak{}strong} strengthens this to work symmetrically.
+
+\begin{lemma}
+  For all relations $P$ implementing \holconst{term\_struct\_rel}:
+  If $P\;t_1\;t_2$ and matching $t_2$ against a pattern $p$ yields an environment $\sigma_2$, then matching $t_1$ against $p$ yields an environment $\sigma_1$ where $\holconst{rel}\;P\;\sigma_1\;\sigma_2$.
+\end{lemma}
+
+\noindent
+The statement becomes stronger when assuming the symmetric locale:
+\begin{lemma}\label{thm:terms:algebra:match-rel}
+  For all relations $P$ implementing \holconst{term\_struct\_rel\_strong}:
+  If $P\;t_1\;t_2$, then $\holconst{rel}\;(\holconst{rel}\;P)\;(\holconst{match}\;p\;t_1)\;(\holconst{match}\;p\;t_2)$.
+\end{lemma}
+
+\noindent
+Unfortunately, no general relational properties about \holconst{subst} can be proved, because neither the locales nor the \holclass{term} class assume any behaviour on terms with abstractions.
+A counterexample would be a predicate $P$ ensuring that there are no nested abstractions.
+A term containing an abstraction could be substituted below an abstraction in another term, creating a term that contains nested abstractions.
+Proving a restricted result on terms that contain no abstractions however is possible, but not useful enough.
+
+\subsubsection{Substitution}
+\label{sec:terms:algebra:thy:subst}
+
+The lack of general relational results about substitution notwithstanding (§\ref{sec:terms:algebra:thy:preds}), it is possible to prove some equational properties of substitution.
+
+\begin{corollary}[Substitution of non-occurring variables]\label{thm:terms:algebra:disjoint}
+  If $\holconst{frees}\;t$ and $\holconst{dom}\;\sigma$ are disjoint, then $\holconst{subst}\;\sigma\;t = t$.
+\end{corollary}
+
+\begin{proof}
+  Iterate \cref{thm:terms:algebra:subst-drop} until the empty environment is reached.
+  $\holconst{id\_env}\;[]$ obviously holds, hence $\holconst{subst}\;\sigma\;t = t$ with \cref{thm:terms:algebra:subst-id}.
+\end{proof}
+
+\begin{corollary}[Substitution of a closed term]\label{thm:terms:algebra:subst-closed}
+  Substituting any environment into a closed term yields the same term.
+\end{corollary}
+
+\noindent
+The above results are properties on substitutions that ignore variables that occur freely in a term, leaving the term unchanged.
+Conversely, it is also possible to restrict substitutions to the set of free variables, having the same result as substituting the full environment.
+$\holconst{restrict}\;S\;\sigma$\holconstindex{restrict} restricts the domain of a map $\sigma$ to the set $S$, i.e., mappings outside of $S$ are dropped.
+
+\begin{lemma}[Substitution of restricted environment]\label{thm:terms:algebra:subst-restrict}
+  Let $\sigma' = \holconst{restrict}\;(\holconst{frees}\;t)\;\sigma$.
+  Then, $\holconst{subst}\;\sigma'\;t = \holconst{subst}\;\sigma\;t$.
+\end{lemma}
+
+\begin{proof}
+  Clearly, the variables dropped from $\sigma$ are not in $\holconst{frees}\;t$.
+  In other words, $\sigma' = \sigma - (\holconst{dom}\;\sigma - \holconst{frees}\;t)$.
+  Iterate \cref{thm:terms:algebra:subst-drop} until $\sigma'$ is reached.
+\end{proof}
+
+\begin{corollary}[Substitution congruence]\label{thm:terms:algebra:subst-cong}
+  If $\sigma_1$ and $\sigma_2$ agree on all free variables in $t$, then $\holconst{subst}\;\sigma_1\;t = \holconst{subst}\;\sigma_2\;t$.
+  Formally:
+  \[
+    \forall x \in \holconst{frees}\;t.\;\sigma_1\;x = \sigma_2\;x \implies \holconst{subst}\;\sigma_1\;t = \holconst{subst}\;\sigma_2\;t
+  \]
+\end{corollary}
+
+\noindent
+Recall \cref{thm:terms:algebra:subst-twice}:
+\[
+  \holconst{closed}\;\sigma_2 \wedge \holconst{disjoint}\;\sigma_1\;\sigma_2 \implies \holconst{subst}\;(\envadd{\sigma_1}{\sigma_2})\;t = \holconst{subst}\;\sigma_1\;(\holconst{subst}\;\sigma_2\;t)
+\]
+It is now possible to prove this, assuming only the \holconst{abs\_pred} case that needs to be proved individually for all term instantiations:
+
+\begin{proof}
+  By induction using \cref{thm:terms:algebra:induct}.
+  \begin{induction}
+    \item[Const/App] Structural using partial definition axioms (\cref{code:terms:algebra:subst:def}).
+    \item[Free]
+      Let $t = \holconst{free}\;x$.
+      Proof by case distinction on $x \in \holconst{dom}\;\sigma_2$.
+      \begin{itemize}
+        \item
+          If $x \in \holconst{dom}\;\sigma_2$, then let $u = \sigma\;x$.
+          But because $\sigma_2$ is closed, so is $u$.
+          With \cref{thm:terms:algebra:subst-closed}, obtain $u = \holconst{subst}\;\sigma_1\;u$.
+        \item
+          Otherwise, show that $\holconst{subst}\;(\envadd{\sigma_1}{\sigma_2})\;t = \holconst{subst}\;\sigma_1\;t$.
+          This follows directly from another case distinction on $x \in \holconst{dom}\;\sigma_1$. \qedhere
+      \end{itemize}
+  \end{induction}
+\end{proof}
+
+\noindent
+In a second step, the assumption that both environments are disjoint can be discharged:
+
+\begin{lemma}[Substitution independence]\label{thm:terms:algebra:subst-indep}
+  \[ \holconst{closed}\;\sigma_2 \implies \holconst{subst}\;(\envadd{\sigma_1}{\sigma_2})\;t = \holconst{subst}\;\sigma_1\;(\holconst{subst}\;\sigma_2\;t) \]
+\end{lemma}
+
+\begin{proof}
+  \begin{align*}
+    &\holconst{subst}\;(\envadd{\sigma_1}{\sigma_2})\;t \\
+    &= \holconst{subst}\;(\holconst{restrict}\;(\holconst{frees}\;t)\;(\envadd{\sigma_1}{\sigma_2}))\;t && \text{(\cref{thm:terms:algebra:subst-restrict})} \\
+    &= \holconst{subst}\;(\envadd{\holconst{restrict}\;(\holconst{frees}\;t)\;\sigma_1}{\sigma_2})\;t && \text{(\cref{thm:terms:algebra:subst-cong})} \\
+    &= \holconst{subst}\;(\envadd{\holconst{restrict}\;(\holconst{frees}\;t - \holconst{dom}\;\sigma_2)\;\sigma_1}{\sigma_2})\;t && \text{(\cref{thm:terms:algebra:subst-cong})} \\
+    &= \holconst{subst}\;(\holconst{restrict}\;(\holconst{frees}\;t - \holconst{dom}\;\sigma_2)\;\sigma_1)\;(\holconst{subst}\;\sigma_2\;t) && \text{(\cref{thm:terms:algebra:subst-twice})\raisebox{3pt}[0pt]{\footnotesize\textdagger}} \\
+    &= \holconst{subst}\;(\holconst{restrict}\;(\holconst{frees}\;(\holconst{subst}\;\sigma_2\;t))\;\sigma_1)\;(\holconst{subst}\;\sigma_2\;t) && \text{(\cref{thm:terms:algebra:subst-vars})} \\
+    &= \holconst{subst}\;\sigma_1\;(\holconst{subst}\;\sigma_2\;t) && \text{(\cref{thm:terms:algebra:subst-restrict})}
+  \end{align*}
+
+  \noindent
+  Applying the independence axiom requires proving its assumption (\textdagger):
+  I need to show that $\holconst{restrict}\;(\holconst{frees}\;t - \holconst{dom}\;\sigma_2)\;\sigma_1$ and $\sigma_2$ are disjoint.
+  This follows because $\sigma_1$ is restricted to a set that does not contain the domain of $\sigma_2$.
+\end{proof}
+
+\noindent
+The reason why it is kept as an assumption in \cref{thm:terms:algebra:subst-twice} is that it makes the instantiation proofs simpler.
+
+Finally, it is possible to prove abstractly that matching and substitution behave as expected:
+\begin{itemize}
+  \item If an object matches a pattern, substituting the resulting environment into the pattern should yield the object.
+  \item Otherwise, there is no substitution that yields the object.
+\end{itemize}
+
+\noindent
+In this formalization, the naive translation of this proposition into Isabelle type checks, but is not as general as expected:
+%
+\[ \holconst{match}\;t\;u = \holconst{Some}\;\sigma \implies \holconst{subst}\;t\;\sigma = u \]
+%
+Because of the premise, the pattern $t$ is fixed to be of type \holtype{term} and because of the conclusion, $t$ and $u$ must have the same type.
+But the desired property should work for all term types, i.e. $\holtypejudgement{u}{\holtypejudgement{\alpha}{\holclass{term}}}$.
+The key idea is to use \holconst{convert\_term} to transfer the pattern into an arbitrary term type.
+Additionally, both parts of the correctness property must be stated simultaneously; otherwise the induction is not general enough.
+
+\begin{lemma}[Correctness of matching and substitution]\label{thm:terms:algebra:match-subst}
+  \setlength{\abovedisplayskip}{5pt}
+  \setlength{\abovedisplayshortskip}{5pt}
+  Let $\holtypejudgement{t}{\holtype{term}}$ be a linear pattern.
+  The following property holds:
+  \begin{align*}
+    &\holkeyword{case}\;\holconst{match}\;t\;u\;\holkeyword{of} \\
+    &\quad\holconst{None}\Rightarrow \forall \sigma.\; \holconst{subst}\;\sigma\;(\holconst{convert\_term}\;t) \neq u\\
+    &\quad\holconst{Some}\;\sigma\Rightarrow \holconst{subst}\;\sigma\;(\holconst{convert\_term}\;t) = u
+  \end{align*}
+\end{lemma}
+
+\begin{proof}
+  By induction on $t$, generalizing $u$.
+  Note that because $t$ is linear, it falls within the domain of $\holconst{convert\_term}$.
+  \begin{induction}
+    \item[Const/Free]
+      Trivial.
+    \item[Abs]
+      If $t$ is an abstraction, then $t$ cannot be linear. Contradiction.
+    \item[App]
+      Let $t = \app{t_1}{t_2}$.
+      Hence, $t' = \holconst{subst}\;\sigma\;(\holconst{convert\_term}\;t)$ is an application for arbitrary $\sigma$.
+      This case can be proved by a series of case distinctions.
+      \begin{itemize}
+        \item
+          If $u$ is not an application, then matching fails.
+          But because $t'$ is always an application, $t' \neq u$.
+        \item
+          Otherwise, $u = \app{u_1}{u_2}$.
+
+          If $t_1$ and $u_1$ do not match, then there is no $\sigma_1$ that transforms $t_1$ into $u_1$, according to the induction hypothesis.
+          With injectivity (\cref{code:terms:algebra:basic:free}), there can be no $\sigma$ that transforms $t$ into $u$.
+
+          Similarly for the case when $t_2$ and $u_2$ do not match.
+        \item
+          Otherwise, $t_1$ matches $u_1$ with $\sigma_1$ and $t_2$ matches $u_2$ with $\sigma_2$.
+          I know from the induction hypotheses that $\holconst{subst}\;\sigma_i\;(\holconst{convert\_term}\;t_i) = u_i$.
+          It remains to show that the environment resulting from matching $t$ and $u$, namely $\sigma = \envadd{\sigma_1}{\sigma_2}$, transforms $t$ into $u$.
+          From \cref{thm:terms:algebra:match-dom}, I know that $\holconst{dom}\;\sigma_i = \holconst{frees}\;t_i$.
+          Consequently, $\holconst{restrict}\;(\holconst{frees}\;t_i)\;\sigma = \sigma_i$.
+          With \cref{thm:terms:algebra:subst-restrict}, the substitution of $t_i$ can be lifted from $\sigma_i$ to $\sigma$. \qedhere
+      \end{itemize}
+  \end{induction}
+\end{proof}
+
+\noindent
+Recall \cref{def:preproc:compatibility:overlapping} (overlapping patterns).
+It was defined on a high level:
+two patterns and overlap if there is an object that is matched by both.
+In fact, this is not how it is defined in the formalization, but it is a consequence of the actual definition.
+The underlying primitives are defined as follows:
+%
+\begin{lstlisting}[language=Isabelle]
+definition matches :: $\alpha$ $\Rightarrow$ $\alpha$ $\Rightarrow$ bool (infix $\lesssim$ 50) where
+//t// $\lesssim$ //u// $\biimplies$ ($\exists$$\sigma$. subst $\sigma$ //t// = //u//)
+
+definition overlapping :: $\alpha$ $\Rightarrow$ $\alpha$ $\Rightarrow$ bool where
+overlapping //s// //t// $\biimplies$ ($\exists$//u//. //s// $\lesssim$ //u// $\wedge$ //t// $\lesssim$ //u//)
+\end{lstlisting}\holconstindex{matches}\holconstindex{overlapping}
+%
+Observe that the \holconst{match} function does not appear there.
+The advantage of that phrasing is that it works for arbitrary term types.
+The desired definition of overlapping patterns now follows as a corollary:
+
+\begin{corollary}[Overlapping patterns]\label{thm:terms:algebra:overlap}
+  If two linear patterns both match the same object, then they overlap.
+\end{corollary}
+
+\begin{proof}
+  First, let $p_1$ and $p_2$ be linear patterns and $u$ be the object; assume that matching with $p_1$ and $p_2$ yields the environments $\sigma_1$ and $\sigma_2$.
+  Observe that $u$ is polymorphic, and so are $\sigma_1$ and $\sigma_2$.
+  Define $\sigma_i' = \holconst{map}\;\holconst{convert\_term}\;\sigma_i$, where the target type of the conversion is \holtype{term}.
+  Using \cref{thm:terms:algebra:match-convert}, obtain that $\holconst{match}\;p_i\;(\holconst{convert\_term}\;u) = \holconst{Some}\;\sigma_i'$.
+  The conclusion follows from \cref{thm:terms:algebra:match-subst}.
+\end{proof}
+
+\begin{corollary}\label{thm:terms:algebra:compatible-eq}
+  If two linear and compatible patterns (\cref{def:preproc:compatibility}) both match the same object, then they are equal to each other.
+\end{corollary}
+
+\begin{proof}
+  \cref{thm:terms:algebra:overlap} establishes that the two patterns overlap.
+  But since they are compatible by assumption, \cref{thm:preproc:compatibility:cases} implies that they are equal to each other.
+\end{proof}
+
+\subsubsection{Matching and rewriting}
+\label{sec:terms:algebra:thy:matching}
+
+The matching operation can be lifted to a list of pairs of patterns and arbitrary data.
+If the data are terms -- which is usually the case --, this list is referred to as \emph{clauses}\index{clause}.
+The first matching pattern is selected.
+%
+\begin{lstlisting}[language=Isabelle]
+fun find_match :: (term $\times$ $\alpha$) list $\Rightarrow$ $\alpha$ $\Rightarrow$ ((string $\holmap$ $\alpha$) $\times$ term $\times$ $\alpha$) option where
+find_match [] _ = None
+find_match ((//pat//, //rhs//) # //cs//) //t// =
+  (||case|| match //pat// //t// ||of|| Some $\sigma$ $\Rightarrow$ Some ($\sigma$, //pat//, //rhs//) | None $\Rightarrow$ find_match //cs// //t//)
+\end{lstlisting}\holconstindex{find\_match}
+%
+Results from §\ref{sec:terms:algebra:thy:preds}, in particular \cref{thm:terms:algebra:match-rel}, can be lifted from \holconst{match} to \holconst{find\_match}.
+
+A particularly noteworthy consequence of \cref{thm:terms:algebra:compatible-eq} is that the result of \holconst{find\_match} is uniquely determined:
+%
+\begin{lemma}\label{thm:terms:algebra:thy:find-match-compat}
+  Let $\mathit{cs}$ be clauses such that:
+  \begin{itemize}
+    \item all patterns are mutually compatible,
+    \item all patterns are linear, and
+    \item there are no two clauses with equal pattern but different terms.
+  \end{itemize}
+  Furthermore, let $(p, u) \in \mathit{cs}$ be a clause.
+  If $t$ matches $p$ yielding environment $\sigma$, then \holconst{find\_match} returns $(\sigma, p, u)$.
+\end{lemma}
+
+\noindent
+A single rewrite step comprises matching a term $t_1$ against a pattern $p$, producing an environment $\sigma$, and subsequent substitution of a term $t_2$ with that environment.
+This notion occurs frequently in the formalization.
+
+Recall §\ref{sec:terms:algebra:thy:applicative}.
+There, operations to split and combine terms and patterns were introduced.
+This can be used to define \emph{equations} in the context of term rewriting\index{equation (rewriting)}:
+
+\begin{definition}\label{def:terms:algebra:thy:eq}
+  An \emph{equation} is a pair of a pattern \emph{(left-hand side)} and a term \emph{(right-hand side)}, where the pattern is of the form $\listcomb{f}{\mathit{ps}}$.
+  $f$ is referred to as the \keyword{head} of the equation.
+\end{definition}
+
+\noindent
+Following term rewriting terminology, I sometimes refer to an equation as \keyword{rule}, and a collection thereof as \emph{rules} or \keyword{rule set}.
+Mostly, it is assumed that the left-hand side of a rule is linear.
+
+Note that this definition of equation is largely similar to the kind of equations other tools in Isabelle expect (i.e., the \holcommand{function} package and the code generator, §\ref{sec:background:code}).
+
+In a particular compiler phase (§\ref{sec:intermediate:elim}), equations need to be transformed according to the structure of their left-hand sides.
+For that, it is necessary to split those into a pair of head and patterns.
+In this section, I will now establish a connection between pattern compatibility and the match operation lifted to lists (§\ref{sec:terms:algebra:matching}).
+
+Recall the informal definition of pattern compatibility (\cref{def:preproc:compatibility}).
+Formally, it is defined as follows:
+\begin{lstlisting}
+fun pattern_compatible :: term $\Rightarrow$ term $\Rightarrow$ bool where
+pattern_compatible ($t_1$ $\${}$ $t_2$) ($u_1$ $\${}$ $u_2$) $\biimplies$
+  pattern_compatible $t_1$ $u_1$ $\wedge$ ($t_1$ = $u_1$ $\implies$ pattern_compatible $t_2$ $u_2$)
+pattern_compatible t u $\biimplies$
+  t = u $\vee$ $\neg$ overlapping t u
+\end{lstlisting}\holconstindex{pattern\_compatible}\index{pattern compatibility}
+%
+Note that pattern compatibility could logically be defined on arbitrary term types.
+However, it is only ever used on \holtype{term}; consequently, I have restricted it to \holtype{term}.
+
+This notion can also be lifted to lists, using a predicate combinator:
+%
+\[
+  \inferrule*{
+  }{\holconst{rev\_accum\_rel}\;R\;[]\;[]} \qquad
+  \inferrule*{
+    \mathit{xs} = \mathit{ys} \implies R\;x\;y \\
+    \holconst{rev\_accum\_rel}\;R\;\mathit{xs}\;\mathit{ys}
+  }{\holconst{rev\_accum\_rel}\;R\;(\mathit{xs}\append[x])\;(\mathit{ys}\append[y])}
+\]\holconstindex{rev\_accum\_rel}
+%
+\begin{lstlisting}
+definition patterns_compatible :: term list $\Rightarrow$ term list $\Rightarrow$ bool where
+patterns_compatible = rev_accum_rel pattern_compatible
+\end{lstlisting}\holconstindex{patterns\_compatible}
+
+\noindent
+This definition is admittedly non-obvious.
+It can be justified by the structure of $\holconst{list\_comb}$ and pattern compatibility.
+In fact, I have defined it in such a way that the following lemma is provable:
+%
+\begin{lemma}\label{thm:terms:algebra:compatible-comb}
+  \[
+    \inferrule*{
+      \holconst{patterns\_compatible}\;\mathit{xs}\;\mathit{ys} \\
+      \holconst{pattern\_compatible}\;f\;g
+    }{
+      \holconst{pattern\_compatible}\;(\holconst{list\_comb}\;f\;\mathit{xs})\;(\holconst{list\_comb}\;g\;\mathit{ys})
+    }
+  \]
+\end{lemma}
+
+\noindent
+The proof works by rule induction on \holconst{rev\_accum\_rel} and requires \cref{thm:terms:algebra:semi-inj}.
+
+Finally, the main result can be proved:
+%
+\begin{corollary}\label{thm:terms:algebra:compatibles-eq}
+  Let $\mathit{ts}_1$ and $\mathit{ts}_2$ two linear and compatible lists of terms.
+  If $\holconst{matchs}\;\mathit{ts}_i\;\mathit{us} = \holconst{Some}\;\sigma_i$ for $i \in \{1,2\}$, then $\mathit{ts}_1 = \mathit{ts}_2$.
+\end{corollary}
+%
+\begin{proof}
+  This can be proved using dummy heads.
+  Let $\mathit{name}$ be an arbitrary string that will serve as a dummy head.
+  Using \cref{thm:terms:algebra:match-matchs}, establish that $\holconst{match}\;(\listcomb{\mathit{name}}{\mathit{ts}_i})\;(\listcomb{\mathit{name}}{\mathit{us}}) = \holconst{Some}\;\sigma_i$.
+  Also, from assumptions, deduce that $\mathit{ts}_1$ and $\mathit{ts}_2$ have the same length.
+  With \cref{thm:terms:algebra:compatible-comb}, obtain that $\listcomb{\mathit{name}}{\mathit{ts}_1}$ and $\listcomb{\mathit{name}}{\mathit{ts}_2}$ are compatible.
+
+  Because these two patterns are compatible, linear, and match the same object, I can use \cref{thm:terms:algebra:compatible-eq} to show that they must be equal to each other.
+  It remains to show that $\mathit{ts}_1 = \mathit{ts}_2$.
+  This follows from injectivity of $\lambda \mathit{ts}.\;\listcomb{\mathit{name}}{\mathit{ts}}$ (\cref{thm:terms:algebra:inj}).
+\end{proof}

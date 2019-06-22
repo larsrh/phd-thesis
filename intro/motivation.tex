@@ -1,0 +1,22 @@
+% !TeX spellcheck = en_GB
+% !TeX encoding = UTF-8
+
+\section{Motivation}
+\label{sec:intro:motivation}
+
+The purpose of using an interactive theorem prover -- or, more generally, any kind of prover -- is to provide high assurance and trust in the produced artifacts.
+The range of applications is vast: program and hardware verification, automata and formal languages, security and confidentiality guarantees, analysis and probability theory, topology, and even general relativity, to name just a few~\cite{avigad2018milestones}.
+The Isabelle community also runs a peer-reviewed repository of formal proof developments, the \emph{Archive of Formal Proofs}.\footnote{\url{https://www.isa-afp.org/}}
+
+As outlined in §\ref{sec:intro:isabelle}, Isabelle is designed in such a way that proofs of statements that are accepted by the system can generally be considered to hold.
+However, a proof is just a proof; in absence of other mechanisms, they ``do nothing''.
+This is why the \emph{extraction} of (or equivalently, transformation into) executable code is not just an afterthought, but rather an important area of research.
+
+While Isabelle offers a rich toolkit for functional programming and mathematical specifications, so far, there is no trustworthy translation to executable code.
+This means that the guarantees provided by the system end at its boundaries.
+The generated code bears -- apart from an unverified algorithm having produced it -- no connection to the original specification.
+This thesis aims to bridge the gap by developing a verified compiler from Isabelle/HOL to CakeML.
+
+The compiler operates in multiple stages that can be roughly characterized as \emph{preprocessing,} \emph{deep embedding,} and \emph{compilation phases}.
+All stages are either \keyword{certifying} or \keyword{verified}, i.e., an error in the implementation of the compiler would lead to an Isabelle error that is displayed to the user.
+Under no circumstances will the system emit executable code that once compiled produces an erroneous result.
