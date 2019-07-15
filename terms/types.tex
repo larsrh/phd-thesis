@@ -354,8 +354,8 @@ Unfortunately, the converse direction does not hold: when transforming values to
   \begin{flalign*}
     \text{where:} &&
     \holconst{pred}\;(\holconst{Vconstr}\;\mathit{name}\;\mathit{vs}) &= Q\;\mathit{name} \wedge (\forall v \in \mathit{vs}.\;\holconst{pred}\;v) \\
-    && \holconst{pred}\;(\holconst{Vabs}\;\cs\;\Gamma) &= P\;\Gamma\;\cs \wedge (\forall v \in \holconst{ran}\;\Gamma.\; \holconst{pred}\;v) \\
-    && \holconst{pred}\;(\holconst{Vrecabs}\;\css\;\mathit{name}\;\Gamma) &= (\forall v \in \holconst{ran}\;\Gamma.\; \holconst{pred}\;v) \wedge \mathit{name} \in \holconst{dom}\;\css \wedge \phantom{foo} \\
+    && \holconst{pred}\;(\holconst{Vabs}\;\cs\;\Gamma) &= P\;\Gamma\;\cs \wedge (\forall v \in \holconst{range}\;\Gamma.\; \holconst{pred}\;v) \\
+    && \holconst{pred}\;(\holconst{Vrecabs}\;\css\;\mathit{name}\;\Gamma) &= (\forall v \in \holconst{range}\;\Gamma.\; \holconst{pred}\;v) \wedge \mathit{name} \in \holconst{dom}\;\css \wedge \phantom{foo} \\
     &&& \qquad R\;(\holconst{dom}\;\css) \wedge (\forall \mathit{name} \in \holconst{dom}\;\css.\; P\;\Gamma\;(\Gamma\;\mathit{name}))
   \end{flalign*}
 
@@ -494,7 +494,7 @@ I will revisit this in §\ref{sec:terms:types:pat}.
 \end{code}
 
 A special kind of structural relation on terms is extensionality (\cref{code:terms:types:value:ext}).
-It compares the captured environments based on the \emph{identifiers}\emph{identifier} that occur in the body of the closure.
+It compares the captured environments based on the \emph{identifiers}\index{identifier} that occur in the body of the closure.
 The set of identifiers comprises the sets of free variables and constants: $\holconst{ids}\;t = \holconst{frees}\;t \cup \holconst{consts}\;t$.\holconstindex{ids}
 
 As outlined earlier in this section, the closures cases of the \holtype{value} type are thought to contain environments mapping variables to values.

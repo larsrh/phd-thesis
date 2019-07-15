@@ -72,8 +72,8 @@ fun embed schematic t =
           error "schematic variables are not supported"
   in aux t end
   \end{lstlisting}
-  
-  \caption{Full implementation of the embedding operation on terms}
+
+  \caption{Full ML implementation of the embedding operation on terms}
   \label{code:deep:embed}
 \end{code}
 
@@ -119,7 +119,7 @@ end\end{lstlisting}\holconstindex{C}\holconstindex{C\_info}\holconstindex{heads}
 Observe that both constructor names (e.g.\ \holconst{Cons}) and function names (e.g.\ \holconst{map}) look the same in this representation.
 But just like in the dictionary construction (§\ref{sec:preproc:dict}), they require different treatment in some phases of the compiler.
 For that reason, the deep embedding also produces a set of constructor names, which is a subset of all constants that occur.
-This is a captured in the \holconst{constructors} locale (\cref{code:deep:constructors}).
+This is captured in the \holconst{constructors} locale (\cref{code:deep:constructors}).
 The constructor information consists of name, arity, and name of the type that it belongs to.
 
 Additionally, there is also a locale that fixes a rule set and assumes some wellformedness conditions (§\ref{sec:intermediate:wellformed}).

@@ -128,7 +128,7 @@ Dictionary construction replaces occurrences of \holconst{sum\_by} in \holconst{
 But \holconst{sum\_by'} has no congruence rule, which means that the termination proof of \holconst{h} must fail.
 
 Besides the termination heuristic, I have also implemented a heuristic method to transfer congruence rules to the new constants.
-The \holcommand{function} package only accepts unconditional congruence rules; consequently, this only works when function equipped with a congruence rule is fully specified and has no visible sort constraints.
+The \holcommand{function} package only accepts unconditional congruence rules; consequently, this only works when a function equipped with a congruence rule is fully specified and has no visible sort constraints.
 
 For that reason, a function like \holconst{sum\_by} cannot be used as a higher-order recursion combinator.
 Instead, it needs to be split into two parts: mapping and summing.

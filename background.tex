@@ -60,7 +60,7 @@ Besides standard features of classical higher-order logic (definitions, quantifi
 \section{Terminology}
 \label{sec:background:terminology}
 
-The term \index{theory} has two meanings:
+The term \keyword{theory} has two meanings:
 on a physical level, files containing Isabelle/Isar sources; on a theoretical level, a collection of definitions, constants, theorems, and other logical content.
 A theory file is a sequence of Isar \emph{commands} that alter the logical theory.
 I will frequently refer to the actual Isabelle source files that accompany this thesis as \emph{the formalization}.
@@ -375,7 +375,7 @@ Because the Lem specification of CakeML assumes some special features of HOL4, s
   \item
     The functional big step semantics is implemented using a special function to enforce monotonically decreasing clocks according to Kumar and Myreen \cite[§3.2]{kumar2018clocked}.\thyrefafp{CakeML}{Evaluate_Clock}
     This makes the termination proof simpler, but complicates reasoning about the semantics.\thyrefafp{CakeML}{Big_Step_Fun_Equiv}
-    Proofs from HOL4 that rephrase the semantics without that function had to be ported to be Isabelle.
+    Proofs from HOL4 that rephrase the semantics without that function had to be ported to Isabelle.
     Additionally, the equivalence proofs between big step and functional big step semantics were ported.
   \item
     In general, Isabelle tools and automation work better with nested recursive definitions instead of mutually recursive definitions.\thyrefafp{CakeML}{Evaluate_Single}

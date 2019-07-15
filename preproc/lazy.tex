@@ -39,7 +39,7 @@ Consider the factorial function:
 %
 It can be rewritten to use pattern matching:
 %
-  \[ \holconst{fact}\;n = (\holkeyword{case}\;n = 0\;\holkeyword{of}\;\holconst{True} \Rightarrow 1\mid\holconst{False}\;n * \holconst{fact}\;(n - 1)) \]
+  \[ \holconst{fact}\;n = (\holkeyword{case}\;n = 0\;\holkeyword{of}\;\holconst{True} \Rightarrow 1\mid\holconst{False} \Rightarrow \;n * \holconst{fact}\;(n - 1)) \]
 %
 After preprocessing:
 %

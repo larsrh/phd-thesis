@@ -124,13 +124,13 @@ It is a procedure implemented in ML which takes existing HOL definitions and pro
 
 \begin{code}
   \begin{lstlisting}[language=Isabelle]
-datatype $\alpha$ dict_plus = mk_plus (param_plus: $\alpha$ $\Rightarrow$ $\alpha$ $\Rightarrow$ $\alpha$)
+datatype $\alpha$ dict_plus = mk_plus (const_plus: $\alpha$ $\Rightarrow$ $\alpha$ $\Rightarrow$ $\alpha$)
 
 definition cert_plus :: $\alpha$::plus dict_plus $\Rightarrow$ bool where
-cert_plus //dict// = (param_plus //dict// = plus)
+cert_plus //dict// = (const_plus //dict// = plus)
 
 fun f' :: $\alpha$ dict_plus $\Rightarrow$ $\alpha$ $\Rightarrow$ $\alpha$ where
-f' //dict// //x// = param_plus //dict// //x// //x//
+f' //dict// //x// = const_plus //dict// //x// //x//
 
 lemma f'_eq: cert_plus //dict// $\implies$ f' //dict// = f
 (* proof omitted *)
@@ -147,7 +147,7 @@ Validity of a dictionary is captured by the $\holconst{cert\_plus}$ predicate.
 Intuitively, $\holconst{cert\_}c\;\mathit{dict}$ means that $\mathit{dict}$ represents a known and lawful instance of class $c$.
 The precise notion of ``validity'' is mainly dictated by technical considerations and discussed in the following section.
 
-Additionally, for each type class instance $\holtypejudgement{\kappa}{(s_1, \ldots, s_k)\;c}$, where $\kappa$ is an $k$-ary type constructor and $s_i = \{c_{i,1}, \ldots, c_{i,n_i}\}$ are sorts, a new constant $\holconst{inst\_}c\holconst{\_}\kappa$.
+Additionally, for each type class instance $\holtypejudgement{\kappa}{(s_1, \ldots, s_k)\;c}$, where $\kappa$ is an $k$-ary type constructor and $s_i = \{c_{i,1}, \ldots, c_{i,n_i}\}$ are sorts, a new constant $\holconst{inst\_}c\holconst{\_}\kappa$ is defined.
 Given the dictionaries for the $s_i$, it computes the dictionary for $\holtypejudgement{\kappa}{c}$.
 Its correctness theorem is of the form
 \[
@@ -201,8 +201,8 @@ For example, given a value of type $\holtype{nat}\;\holtype{dict\_plus}$, how ca
     %
     \begin{lstlisting}[language=Isabelle]
 definition cert_plus :: $\alpha$ dict_plus $\Rightarrow$ bool where
-cert_plus //dict// = ($\forall$//x// //y// //z//. param_plus //dict// (param_plus //dict// //x// //y//) //z// =
-                               param_plus //dict// //x// (param_plus //dict// //y// //z//))\end{lstlisting}
+cert_plus //dict// = ($\forall$//x// //y// //z//. const_plus //dict// (const_plus //dict// //x// //y//) //z// =
+                               const_plus //dict// //x// (const_plus //dict// //y// //z//))\end{lstlisting}
     %
     Proving that instances satisfy this certificate is trivial.
     However, the equality proof of a constant before and after the construction is impossible: they are simply not equal in general.
@@ -302,7 +302,7 @@ In the actual implementation, all of these steps are intertwined.
 
 \subsubsection{Types}
 
-Recall that Isabelle distinguishes between type variables and schematic type variables\emph{schematic variable} (§\ref{sec:background:types}).
+Recall that Isabelle distinguishes between type variables and schematic type variables\index{schematic variable} (§\ref{sec:background:types}).
 Simple types, i.e., types that contain no schematic type variables, can be translated very easily: $\dict{\tau}$ forgets all sort constraints.
 This is possible because those cannot have intrinsic sort constraints; those are imposed from the context and will be introduced accordingly when dealing with type schemes, which will be explained later.
 
@@ -310,12 +310,12 @@ This is possible because those cannot have intrinsic sort constraints; those are
   \begin{lstlisting}
 datatype $\alpha$ dict_//c// = mk_//c//
   (super_$c_1$: $\alpha$ dict_$c_1$) (super_$c_2$: $\alpha$ dict_$c_2$) $\ldots$ (super_$c_n$: $\alpha$ dict_$c_n$)
-  (param_$f_1$: $\dict{\tau_1}$) (param_$f_2$: $\dict{\tau_2}$) $\ldots$ (param_$f_m$: $\dict{\tau_m}$)
+  (const_$f_1$: $\dict{\tau_1}$) (const_$f_2$: $\dict{\tau_2}$) $\ldots$ (const_$f_m$: $\dict{\tau_m}$)
 
 definition cert_//c// :: $\alpha$:://c// dict_//c// $\Rightarrow$ bool where
 cert_//c// //dict// =
   (cert_$c_1$ (super_$c_1$ //dict//) $\wedge$ cert_$c_2$ (super_$c_2$ //dict//) $\wedge$ $\ldots$ cert_$c_n$ (super_$c_n$ //dict//) $\wedge$
-   param_$f_1$ //dict// = $f_1$ $\wedge$ param_$f_2$ //dict// = $f_2$ $\wedge$ $\ldots$ $\wedge$ param_$f_m$ //dict// = $f_m$)
+   const_$f_1$ //dict// = $f_1$ $\wedge$ const_$f_2$ //dict// = $f_2$ $\wedge$ $\ldots$ $\wedge$ const_$f_m$ //dict// = $f_m$)
   \end{lstlisting}
   \caption{Dictionary datatype and certificate predicate}
   \label{code:datatype-cert}
@@ -526,9 +526,9 @@ This function carries two distinct class constraints -- arising from the use of 
 %
 \begin{lstlisting}[language=Isabelle]
 sum_list' //dict_plus// //dict_zero// [] =
-    param_zero //dict_zero//
+    const_zero //dict_zero//
 sum_list' //dict_plus// //dict_zero// (//x// # //xs//) =
-    param_plus //dict_plus// //x// (sum_list' //dict_plus// //dict_zero// //xs//)
+    const_plus //dict_plus// //x// (sum_list' //dict_plus// //dict_zero// //xs//)
 \end{lstlisting}
 %
 Here, the termination argument has not changed:
@@ -543,7 +543,7 @@ $\bar{p}$ stands for the (tupled) patterns on the left-hand side of an equation 
 Only variables bound in $\bar{p}$ may appear in $\bar{x}$.
 
 \remark*{
-  The \holcommand{function} not only tracks the parameters passed to a recursive call, but also, under which conditions such a call appears.
+  The \holcommand{function} command not only tracks the parameters passed to a recursive call, but also, under which conditions such a call appears.
   For example, a recursive call may appear in a \holkeyword{then} or \holkeyword{else} branch.
   To properly represent that, the notation needs to be extended to allow for arbitrary predicates.
   For explaining the termination heuristics, this generality is not needed; but it will be revisited for another purpose in §\ref{sec:preproc:dict:partial}.
@@ -939,7 +939,7 @@ Each equation of \holconst{f} gives rise to a rule in \holconst{f\_side}.
 Note that as far as Isabelle's total logic is concerned, this function is total:
 The \holconst{hd} function just returns \holconst{undefined} on empty lists.
 Because of this, any notion of \emph{specifiedness} cannot be fully formalized and has to be -- to some extent -- a heuristic.
-A good intuition that is that I want to characterize all inputs $x$ to a function $\holconst{f}$ such that evaluation after code generation to a target language does not yield a run-time exception.
+A good intuition is that I want to characterize all inputs $x$ to a function $\holconst{f}$ such that evaluation after code generation to a target language does not yield a run-time exception.
 
 \begin{code}[t]
   \begin{lstlisting}[language=ML]
@@ -1177,7 +1177,7 @@ There, a very similar construction to here is used, replacing classes by records
 Additional complications arise because Haskell admits cyclic dependencies between class instances~\cite{laemmel2005syb}, which are prohibited in Isabelle and hence pose no problem for this work.
 A further simplification compared with Haskell is that Isabelle only features an ML-style simply typed polymorphic lambda calculus without constructor or multi-parameter classes.
 
-Idris, a dependently typed functional language, generalizes the concept of type classes to classes that can be parametrized by any value.%
+Idris, a dependently typed functional language, generalizes the concept of type classes to classes that can be parametrized by any value.
 In more recent versions of Idris, they are called \emph{interfaces}.
 Still, the elaboration of expressions with class constraints and class and instance declarations is surprisingly similar to here~\cite{brady2013idris}.
 

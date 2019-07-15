@@ -171,7 +171,7 @@ The basic proof idea is to use induction over $t$ after suitable generalization 
     }{\Gamma \vdash \holconst{Nconst}\;x \approx_\alpha \holconst{Nconst}\;x} \quad
     \inferrule*{
       x \not\in \holconst{dom}\;\Gamma \\
-      x \not\in \holconst{ran}\;\Gamma
+      x \not\in \holconst{range}\;\Gamma
     }{\Gamma \vdash \holconst{Nvar}\;x \approx_\alpha \holconst{Nvar}\;x} \quad
     \inferrule*{
       \Gamma\;x = \holconst{Some}\;y

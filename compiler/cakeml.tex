@@ -70,7 +70,7 @@ Because they model the syntax of a real-world programming language, they are muc
 The most notable difference in types is that patterns and constructor values in CakeML are $n$-ary.
 This corresponds closely to the \holtype{value} (§\ref{sec:terms:types:value}) and \holtype{pat} (§\ref{sec:terms:types:pat}) types that I introduced for the evaluation semantics (§\ref{sec:intermediate:value}).
 Consequently, a conversion function between the pattern types is easily defined (\cref{code:intermediate:cakeml:pat}).
-Additional CakeML complexities, for example pattern wildcards ($\holkeyword{case}\;t\;\holkeyword{of}\;\_ \Rightarrow u$) or qualified constructor names (\holconst{List.Cons}) are excluded from the CupCakeML fragment.
+Additional CakeML complexities, for example pattern wildcards ($\holkeyword{case}\;t\;\holkeyword{of}\;\_ \Rightarrow u$) or qualified names (\holconst{Module.name}) are excluded from the CupCakeML fragment.
 
 CakeML's matching function has three possible results: \holconst{Match}, \holconst{No\_match}, and \holconst{Match\_type\_\allowbreak{}error}.
 The latter result may occur when the pattern and the object disagree about their arity.
@@ -278,7 +278,7 @@ The value correspondence is structurally simpler, but unfortunately, syntactical
     \end{itemize}
   \item[RecAbs]
     This case is identical to non-recursive closures, but lifted to lists of clauses.
-    It is omitted \cref{code:intermediate:cakeml:v-corr} because of its syntactic size.
+    It is omitted in \cref{code:intermediate:cakeml:v-corr} because of its syntactic size.
 \end{semantics}
 
 \subsection{Correctness}

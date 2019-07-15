@@ -30,9 +30,9 @@ OpenTheory could eventually be used to import the full CakeML formalization into
 It is not yet clear which is the more promising approach.
 
 \paragraph{Pattern compilation}
-As discussed in §\ref{sec:intermediate:elim:discussion}, there is an alternative compilation scheme of pattern occurring on the left-hand side of equations.
+As discussed in §\ref{sec:intermediate:elim:discussion}, there is an alternative compilation scheme of patterns occurring on the left-hand side of equations.
 Using that scheme means that the conflation of abstraction and matching in \holtype{pterm} and \holtype{sterm} could be removed.
-This would not required significant changes to the term algebra, but to the correctness proofs of all phases after \holtype{nterm}.
+This would not require changes to the term algebra, but it would require changes to the correctness proofs of all phases after \holtype{nterm}.
 
 \paragraph{Targetting machine types}
 While CakeML supports operations on machine types, e.g.\ words, my compilation toolchain never emits such operations (§\ref{sec:intermediate:cakeml:cupcake}).

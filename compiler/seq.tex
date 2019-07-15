@@ -10,7 +10,7 @@
 
 \begin{code}[t]
   \[
-    \inferrule*[left=Step]{(\mathit{name}, \mathit{rhs}) \in \rs}{\rewrite{\rs}{\holconst{Sconst}\;\mathit{name}}{\mathit{rhs}}}
+    \inferrule*[left=Step]{(\mathit{name}, \mathit{rhs}) \in \holconst{set}\;\rs}{\rewrite{\rs}{\holconst{Sconst}\;\mathit{name}}{\mathit{rhs}}}
     \quad
     \inferrule*[left=Beta]{\holconst{find\_match}\;\cs\;t = \holconst{Some}\;(\sigma, \mathit{rhs})}{\rewrite{\rs}{\app{(\Lambda\; \cs)}{t}}{\holconst{subst}\;\sigma\;\mathit{rhs}}}
   \]
@@ -53,7 +53,7 @@ fun sterm_to_pterm :: sterm $\Rightarrow$ pterm where
 sterm_to_pterm (Sconst //name//) = Pconst //name//
 sterm_to_pterm (Svar //name//) = Pvar //name//
 sterm_to_pterm (t $\${}$ u) = sterm_to_pterm //t// $\${}$ sterm_to_pterm //u//
-sterm_to_pterm (Sabs //cs//) = Pabs (set (map ($\holconst{map}_\holtype{prod}$ id untranslate_sterm) //cs//))\end{lstlisting}\holconstindex{pterm\_to\_sterm}\holconstindex{sterm\_to\_pterm}
+sterm_to_pterm (Sabs //cs//) = Pabs (set (map ($\holconst{map}_\holtype{prod}$ id sterm_to_pterm) //cs//))\end{lstlisting}\holconstindex{pterm\_to\_sterm}\holconstindex{sterm\_to\_pterm}
   \caption{Translations between \holtype{pterm}s and \holtype{sterm}s}
   \label{code:intermediate:seq:convert}
 \end{code}
