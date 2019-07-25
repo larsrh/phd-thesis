@@ -380,12 +380,12 @@ Because the Lem specification of CakeML assumes some special features of HOL4, s
   \item
     In general, Isabelle tools and automation work better with nested recursive definitions instead of mutually recursive definitions.\thyrefafp{CakeML}{Evaluate_Single}
     Additionally, my formalization ignores certain features of CakeML; notably mutable cells, modules, and literals.
-    Consequently, I have derived a smaller, executable version of the original CakeML semantics, together with an equivalence proof, called \emph{CupCakeML} (§\ref{sec:intermediate:cakeml}).\thyrefmy{CakeML_Extras}{CupCake_Semantics}
+    Consequently, I have derived a smaller, executable version of the original CakeML semantics, together with an equivalence proof, called \emph{CupCakeML} (§\ref{sec:intermediate:cakeml}).\thyrefmy{CupCake_Semantics}
     Portions of this have been implemented by Yu Zhang.
   \item
-    Where necessary, I have set up code equations and \holcommand{quickcheck} for more rapid development of theories.\thyrefafp*{CakeML}{CakeML_Quickcheck}
+    Where necessary, I have set up code equations and \holcommand{quickcheck} for more rapid development of theories.\thyrefafp{CakeML}{CakeML_Quickcheck}
     In general, the functional big step semantics is better suited for executability than the relational variant, because it is defined as a \holcommand{function}.
 \end{itemize}
 
-\noindent In order to obtain a full toolchain from Isabelle definitions to machine code, I have implemented a small pretty-printer of the CupCakeML fragment to concrete CakeML syntax, which is part of the trusted code base.\thyrefafp*{CakeML}{CakeML_Compiler}
+\noindent In order to obtain a full toolchain from Isabelle definitions to machine code, I have implemented a small pretty-printer of the CupCakeML fragment to concrete CakeML syntax, which is part of the trusted code base.\thyrefafp{CakeML}{CakeML_Compiler}
 The resulting source text can then be fed into the CakeML compiler.

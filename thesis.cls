@@ -184,8 +184,7 @@ postcondition, precondition, constraint, assert, forAll, return, ensure, require
 }
 \newcommand\thyrefdist[2]{\@thyref{\href{https://isabelle.in.tum.de/website-Isabelle2018/dist/library/HOL/#1/#2.html}{\texttt{\path{#2}}}}}
 \newcommand\thyrefafp[2]{\@thyref{\href{https://www.isa-afp.org/browser_info/current/AFP/#1/#2.html}{\texttt{\path{#2}}}}}
-\WithSuffix\newcommand\thyrefafp*[2]{\@thyref{\href{https://devel.isa-afp.org/browser_info/current/AFP/#1/#2.html}{\texttt{\path{#2}}}}}
-\newcommand\thyrefmy[2]{\@thyref{\href{https://isabelle.hupel.info/browser_info/Codegen/#1/#2.html}{\texttt{\path{#2}}}}}
+\newcommand\thyrefmy[1]{\@thyref{\href{https://www.isa-afp.org/browser_info/current/AFP/CakeML_Codegen/#1.html}{\texttt{\path{#1}}}}}
 
 \makeatother
 
